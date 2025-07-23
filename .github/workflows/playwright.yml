@@ -29,24 +29,23 @@
 name: Playwright Tests
 
 on:
-  # push:
-  #   branches: [main]
-  # pull_request:
-  #   branches: [main]
   schedule:
-    # 🕒 Runs daily at 8:00 AM UTC
-    - cron: '0 8 * * *'
-    # 🕒 Runs daily at 8:00 AM IST (which is 2:30 AM UTC)
-    - cron: '30 2 * * *'
+    - cron: '0 8 * * *'     # 8:00 AM UTC
+    - cron: '30 2 * * *'    # 8:00 AM IST (2:30 AM UTC)
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -54,15 +53,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright Browsers
+      - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
       - name: Run Playwright tests
-        id: tests
+        id: run_tests
         run: |
-          npx playwright test || echo "TESTS_FAILED=true" >> $GITHUB_ENV
+          npx playwright test --reporter=json > report.json || true
 
-      - name: Upload HTML Report (optional)
+      - name: Parse test results
+        id: summary
+        run: |
+          PASSED=$(jq '[.suites[].specs[].tests[] | select(.results[].status == "passed")] | length' report.json)
+          FAILED=$(jq '[.suites[].specs[].tests[] | select(.results[].status == "failed")] | length' report.json)
+          TOTAL=$((PASSED + FAILED))
+
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+          echo "failed=$FAILED" >> $GITHUB_OUTPUT
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          echo "status=$([[ $FAILED -eq 0 ]] && echo success || echo failure)" >> $GITHUB_OUTPUT
+
+      - name: Upload HTML Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -75,9 +86,9 @@ jobs:
         with:
           payload: |
             {
-              "text": "✅ Playwright Tests completed on ${{ github.ref_name }} by ${{ github.actor }}\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Report>\n${{ env.TESTS_FAILED == 'true' && ':x: Some tests failed!' || ':white_check_mark: All tests passed!' }}"
+              "text": ":${{ steps.summary.outputs.status == 'success' && 'white_check_mark' || 'x'}}: *Playwright Tests Completed*\n*Branch:* `${{ github.ref_name }}` by `${{ github.actor }}`\n*Total:* ${{ steps.summary.outputs.total }}\n*Passed:* ${{ steps.summary.outputs.passed }}\n*Failed:* ${{ steps.summary.outputs.failed }}\n\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Full Report>"
             }
-
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
 
