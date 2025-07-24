@@ -34,10 +34,10 @@ on:
   # pull_request:
   #   branches: [main]
   schedule:
-    # 🕒 Runs daily at 8:00 AM UTC
-    - cron: '0 8 * * *'
+    # # 🕒 Runs daily at 8:00 AM UTC
+    # - cron: '0 8 * * *'
     # 🕒 Runs daily at 8:00 AM IST (which is 2:30 AM UTC)
-    - cron: '30 2 * * *'
+    - cron: '30 3 * * *'
 
 jobs:
   test:
