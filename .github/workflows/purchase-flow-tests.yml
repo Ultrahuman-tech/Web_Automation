@@ -97,8 +97,54 @@ on:
           - 'false'
 
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      test-matrix: ${{ steps.matrix.outputs.matrix }}
+    
+    steps:
+      - name: Generate test matrix
+        id: matrix
+        run: |
+          # Initialize matrix array
+          matrix='[]'
+          
+          # Define languages and countries
+          if [ "${{ inputs.language }}" = "all" ]; then
+            languages=("en" "ja" "de" "th")
+          else
+            languages=("${{ inputs.language }}")
+          fi
+          
+          if [ "${{ inputs.country }}" = "all" ]; then
+            countries=("in" "us" "ae" "at" "global")
+          else
+            countries=("${{ inputs.country }}")
+          fi
+          
+          # Generate matrix combinations
+          for lang in "${languages[@]}"; do
+            for country in "${countries[@]}"; do
+              matrix=$(echo "$matrix" | jq --arg lang "$lang" --arg country "$country" '. += [{"language": $lang, "country": $country}]')
+            done
+          done
+          
+          echo "Generated matrix: $matrix"
+          # Use proper GitHub Actions output format
+          {
+            echo "matrix<<EOF"
+            echo "$matrix"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+      
+      - name: Display test matrix
+        run: |
+          echo "Test Matrix:"
+          echo '${{ steps.matrix.outputs.matrix }}' | jq '.'
+
   purchase-flow-tests:
     runs-on: ubuntu-latest
+    needs: setup
     
     strategy:
       matrix:
@@ -165,46 +211,6 @@ jobs:
           name: playwright-report-${{ matrix.language }}-${{ matrix.country }}
           path: playwright-report/
           retention-days: 30
-
-  setup:
-    runs-on: ubuntu-latest
-    outputs:
-      test-matrix: ${{ steps.matrix.outputs.matrix }}
-    
-    steps:
-      - name: Generate test matrix
-        id: matrix
-        run: |
-          # Initialize matrix array
-          matrix='[]'
-          
-          # Define languages and countries
-          if [ "${{ inputs.language }}" = "all" ]; then
-            languages=("en" "ja" "de" "th")
-          else
-            languages=("${{ inputs.language }}")
-          fi
-          
-          if [ "${{ inputs.country }}" = "all" ]; then
-            countries=("in" "us" "ae" "at" "global")
-          else
-            countries=("${{ inputs.country }}")
-          fi
-          
-          # Generate matrix combinations
-          for lang in "${languages[@]}"; do
-            for country in "${countries[@]}"; do
-              matrix=$(echo "$matrix" | jq --arg lang "$lang" --arg country "$country" '. += [{"language": $lang, "country": $country}]')
-            done
-          done
-          
-          echo "Generated matrix: $matrix"
-          echo "matrix=$matrix" >> $GITHUB_OUTPUT
-      
-      - name: Display test matrix
-        run: |
-          echo "Test Matrix:"
-          echo '${{ steps.matrix.outputs.matrix }}' | jq '.'
 
   summary:
     runs-on: ubuntu-latest
