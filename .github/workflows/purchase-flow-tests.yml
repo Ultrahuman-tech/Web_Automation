@@ -1,0 +1,338 @@
+name: Ultrahuman Ring AIR Purchase Flow Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      # Environment Configuration
+      environment:
+        description: 'Environment to test against (ignored if custom_base_url is provided)'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+          - development
+          - local
+      
+      # Custom Base URL (Optional)
+      custom_base_url:
+        description: 'Custom base URL to test against (overrides environment selection)'
+        required: false
+        default: ''
+        type: string
+      
+      # Language Configuration
+      language:
+        description: 'Language to test (or "all" for all languages)'
+        required: true
+        default: 'en'
+        type: choice
+        options:
+          - en
+          - ja
+          - de
+          - th
+          - all
+      
+      # Country Configuration
+      country:
+        description: 'Country to test (or "all" for all countries)'
+        required: true
+        default: 'in'
+        type: choice
+        options:
+          - in
+          - us
+          - ae
+          - at
+          - global
+          - all
+      
+      # Test Configuration
+      max_combinations:
+        description: 'Number of combinations to test'
+        required: true
+        default: '10'
+        type: choice
+        options:
+          - '5'
+          - '10'
+          - '20'
+          - '50'
+          - '100'
+          - 'all'
+      
+      # Execution Configuration
+      workers:
+        description: 'Number of parallel workers'
+        required: true
+        default: '3'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '5'
+          - '10'
+      
+      # Mode Configuration
+      mode:
+        description: 'Test execution mode'
+        required: true
+        default: 'headless'
+        type: choice
+        options:
+          - headless
+          - headed
+      
+      # Slack Notification
+      slack_notification:
+        description: 'Send results to Slack channel'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  purchase-flow-tests:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.setup.outputs.test-matrix) }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+      
+      - name: Run Purchase Flow Tests
+        env:
+          TEST_ENV: ${{ inputs.environment }}
+          CUSTOM_BASE_URL: ${{ inputs.custom_base_url }}
+          LANGUAGE: ${{ matrix.language }}
+          COUNTRY: ${{ matrix.country }}
+          MAX_COMBINATIONS: ${{ inputs.max_combinations == 'all' && '330' || inputs.max_combinations }}
+        run: |
+          echo "🚀 Starting Purchase Flow Tests"
+          echo "Environment: $TEST_ENV"
+          if [ -n "$CUSTOM_BASE_URL" ]; then
+            echo "Custom Base URL: $CUSTOM_BASE_URL (overrides environment)"
+          fi
+          echo "Language: $LANGUAGE"
+          echo "Country: $COUNTRY"
+          echo "Max Combinations: $MAX_COMBINATIONS"
+          echo "Workers: ${{ inputs.workers }}"
+          echo "Mode: ${{ inputs.mode }}"
+          
+          # Set Playwright command based on mode
+          if [ "${{ inputs.mode }}" = "headed" ]; then
+            PLAYWRIGHT_CMD="npx playwright test tests/purchase/comprehensive-multi-language.spec.ts --workers=${{ inputs.workers }} --headed"
+          else
+            PLAYWRIGHT_CMD="npx playwright test tests/purchase/comprehensive-multi-language.spec.ts --workers=${{ inputs.workers }}"
+          fi
+          
+          # Run the test
+          echo "Running: $PLAYWRIGHT_CMD"
+          $PLAYWRIGHT_CMD
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.language }}-${{ matrix.country }}
+          path: test-results/
+          retention-days: 30
+      
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ matrix.language }}-${{ matrix.country }}
+          path: playwright-report/
+          retention-days: 30
+
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      test-matrix: ${{ steps.matrix.outputs.matrix }}
+    
+    steps:
+      - name: Generate test matrix
+        id: matrix
+        run: |
+          # Initialize matrix array
+          matrix='[]'
+          
+          # Define languages and countries
+          if [ "${{ inputs.language }}" = "all" ]; then
+            languages=("en" "ja" "de" "th")
+          else
+            languages=("${{ inputs.language }}")
+          fi
+          
+          if [ "${{ inputs.country }}" = "all" ]; then
+            countries=("in" "us" "ae" "at" "global")
+          else
+            countries=("${{ inputs.country }}")
+          fi
+          
+          # Generate matrix combinations
+          for lang in "${languages[@]}"; do
+            for country in "${countries[@]}"; do
+              matrix=$(echo "$matrix" | jq --arg lang "$lang" --arg country "$country" '. += [{"language": $lang, "country": $country}]')
+            done
+          done
+          
+          echo "Generated matrix: $matrix"
+          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+      
+      - name: Display test matrix
+        run: |
+          echo "Test Matrix:"
+          echo '${{ steps.matrix.outputs.matrix }}' | jq '.'
+
+  summary:
+    runs-on: ubuntu-latest
+    needs: [purchase-flow-tests, setup]
+    if: always()
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+      
+      - name: Generate test summary
+        run: |
+          echo "# 🎯 Purchase Flow Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📊 Test Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ inputs.custom_base_url }}" ]; then
+            echo "- **Custom Base URL**: ${{ inputs.custom_base_url }} (overrides environment)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Language**: ${{ inputs.language }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Country**: ${{ inputs.country }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Max Combinations**: ${{ inputs.max_combinations }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workers**: ${{ inputs.workers }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: ${{ inputs.mode }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Calculate total tests
+          if [ "${{ inputs.language }}" = "all" ]; then
+            lang_count=4
+          else
+            lang_count=1
+          fi
+          
+          if [ "${{ inputs.country }}" = "all" ]; then
+            country_count=5
+          else
+            country_count=1
+          fi
+          
+          total_combinations=$((lang_count * country_count))
+          
+          if [ "${{ inputs.max_combinations }}" = "all" ]; then
+            per_test=330
+          else
+            per_test=${{ inputs.max_combinations }}
+          fi
+          
+          total_tests=$((total_combinations * per_test))
+          
+          echo "## 🎯 Test Scope" >> $GITHUB_STEP_SUMMARY
+          echo "- **Languages**: ${{ inputs.language }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Countries**: ${{ inputs.country }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Combinations**: $total_combinations" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests per Combination**: $per_test" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Tests**: $total_tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## 📁 Artifacts Generated" >> $GITHUB_STEP_SUMMARY
+          echo "The following artifacts have been generated and are available for download:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # List artifacts
+          if [ -d "artifacts" ]; then
+            for artifact in artifacts/*/; do
+              if [ -d "$artifact" ]; then
+                artifact_name=$(basename "$artifact")
+                echo "- **$artifact_name**" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔍 How to Access Results" >> $GITHUB_STEP_SUMMARY
+          echo "1. Go to the **Actions** tab in this repository" >> $GITHUB_STEP_SUMMARY
+          echo "2. Click on this workflow run" >> $GITHUB_STEP_SUMMARY
+          echo "3. Scroll down to the **Artifacts** section" >> $GITHUB_STEP_SUMMARY
+          echo "4. Download the relevant artifact(s)" >> $GITHUB_STEP_SUMMARY
+          echo "5. Extract and view the test results and reports" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📋 Test Results Files" >> $GITHUB_STEP_SUMMARY
+          echo "- **JSON files**: Detailed test results with pass/fail counts" >> $GITHUB_STEP_SUMMARY
+          echo "- **HTML reports**: Interactive Playwright test reports" >> $GITHUB_STEP_SUMMARY
+          echo "- **Screenshots**: Failure screenshots for debugging" >> $GITHUB_STEP_SUMMARY
+          
+          # Save summary data for Slack notification
+          echo "TEST_CONFIG_ENV=${{ inputs.environment }}" >> $GITHUB_ENV
+          echo "TEST_CONFIG_LANGUAGE=${{ inputs.language }}" >> $GITHUB_ENV
+          echo "TEST_CONFIG_COUNTRY=${{ inputs.country }}" >> $GITHUB_ENV
+          echo "TEST_CONFIG_COMBINATIONS=${{ inputs.max_combinations }}" >> $GITHUB_ENV
+          echo "TEST_CONFIG_WORKERS=${{ inputs.workers }}" >> $GITHUB_ENV
+          echo "TEST_CONFIG_MODE=${{ inputs.mode }}" >> $GITHUB_ENV
+          echo "TEST_TOTAL_COMBINATIONS=$total_combinations" >> $GITHUB_ENV
+          echo "TEST_TOTAL_TESTS=$total_tests" >> $GITHUB_ENV
+          echo "TEST_WORKFLOW_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_ENV
+
+  slack-notification:
+    runs-on: ubuntu-latest
+    needs: [purchase-flow-tests, summary]
+    if: always() && inputs.slack_notification == 'true'
+    
+    steps:
+      - name: Send Slack Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#qa-testing'
+          text: |
+            🎯 *Purchase Flow Test Results*
+            
+            *Configuration:*
+            • Environment: ${{ inputs.environment }}
+            ${{ inputs.custom_base_url && format('• Custom Base URL: {0} (overrides environment)', inputs.custom_base_url) || '' }}
+            • Language: ${{ inputs.language }}
+            • Country: ${{ inputs.country }}
+            • Max Combinations: ${{ inputs.max_combinations }}
+            • Workers: ${{ inputs.workers }}
+            • Mode: ${{ inputs.mode }}
+            
+            *Test Scope:*
+            • Total Combinations: ${{ needs.summary.outputs.total_combinations || 'N/A' }}
+            • Total Tests: ${{ needs.summary.outputs.total_tests || 'N/A' }}
+            
+            *Status:* ${{ job.status == 'success' && '✅ PASSED' || '❌ FAILED' }}
+            
+            *Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>
+            
+            *Artifacts:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Download Results>
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
