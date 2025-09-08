@@ -216,6 +216,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [purchase-flow-tests, setup]
     if: always()
+    outputs:
+      total_combinations: ${{ steps.calculate.outputs.total_combinations }}
+      total_tests: ${{ steps.calculate.outputs.total_tests }}
     
     steps:
       - name: Download all artifacts
@@ -223,22 +226,9 @@ jobs:
         with:
           path: artifacts/
       
-      - name: Generate test summary
+      - name: Calculate test metrics
+        id: calculate
         run: |
-          echo "# 🎯 Purchase Flow Test Results Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## 📊 Test Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
-          if [ -n "${{ inputs.custom_base_url }}" ]; then
-            echo "- **Custom Base URL**: ${{ inputs.custom_base_url }} (overrides environment)" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "- **Language**: ${{ inputs.language }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Country**: ${{ inputs.country }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Max Combinations**: ${{ inputs.max_combinations }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Workers**: ${{ inputs.workers }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Mode**: ${{ inputs.mode }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
           # Calculate total tests
           if [ "${{ inputs.language }}" = "all" ]; then
             lang_count=4
@@ -262,12 +252,35 @@ jobs:
           
           total_tests=$((total_combinations * per_test))
           
+          echo "total_combinations=$total_combinations" >> $GITHUB_OUTPUT
+          echo "total_tests=$total_tests" >> $GITHUB_OUTPUT
+          
+          echo "📊 Calculated metrics:"
+          echo "  Total Combinations: $total_combinations"
+          echo "  Total Tests: $total_tests"
+
+      - name: Generate test summary
+        run: |
+          echo "# 🎯 Purchase Flow Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📊 Test Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ inputs.custom_base_url }}" ]; then
+            echo "- **Custom Base URL**: ${{ inputs.custom_base_url }} (overrides environment)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Language**: ${{ inputs.language }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Country**: ${{ inputs.country }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Max Combinations**: ${{ inputs.max_combinations }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workers**: ${{ inputs.workers }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: ${{ inputs.mode }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
           echo "## 🎯 Test Scope" >> $GITHUB_STEP_SUMMARY
           echo "- **Languages**: ${{ inputs.language }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Countries**: ${{ inputs.country }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Total Combinations**: $total_combinations" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tests per Combination**: $per_test" >> $GITHUB_STEP_SUMMARY
-          echo "- **Total Tests**: $total_tests" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Combinations**: ${{ steps.calculate.outputs.total_combinations }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests per Combination**: ${{ inputs.max_combinations }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Tests**: ${{ steps.calculate.outputs.total_tests }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           echo "## 📁 Artifacts Generated" >> $GITHUB_STEP_SUMMARY
@@ -304,8 +317,8 @@ jobs:
           echo "TEST_CONFIG_COMBINATIONS=${{ inputs.max_combinations }}" >> $GITHUB_ENV
           echo "TEST_CONFIG_WORKERS=${{ inputs.workers }}" >> $GITHUB_ENV
           echo "TEST_CONFIG_MODE=${{ inputs.mode }}" >> $GITHUB_ENV
-          echo "TEST_TOTAL_COMBINATIONS=$total_combinations" >> $GITHUB_ENV
-          echo "TEST_TOTAL_TESTS=$total_tests" >> $GITHUB_ENV
+          echo "TEST_TOTAL_COMBINATIONS=${{ steps.calculate.outputs.total_combinations }}" >> $GITHUB_ENV
+          echo "TEST_TOTAL_TESTS=${{ steps.calculate.outputs.total_tests }}" >> $GITHUB_ENV
           echo "TEST_WORKFLOW_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_ENV
 
   slack-notification:
@@ -348,11 +361,14 @@ jobs:
                 echo "Processing: $result_file"
                 echo "File contents:"
                 cat "$result_file" | head -20
+                echo "JSON structure analysis:"
+                jq -r 'keys' "$result_file" 2>/dev/null || echo "Not valid JSON"
+                jq -r '.summary | keys' "$result_file" 2>/dev/null || echo "No summary object"
                 
-                # Extract test counts from JSON
-                passed=$(jq -r '.passed // 0' "$result_file" 2>/dev/null || echo "0")
-                failed=$(jq -r '.failed // 0' "$result_file" 2>/dev/null || echo "0")
-                skipped=$(jq -r '.skipped // 0' "$result_file" 2>/dev/null || echo "0")
+                # Extract test counts from JSON (try multiple possible structures)
+                passed=$(jq -r '.summary.passedTests // .passed // 0' "$result_file" 2>/dev/null || echo "0")
+                failed=$(jq -r '.summary.failedTests // .failed // 0' "$result_file" 2>/dev/null || echo "0")
+                skipped=$(jq -r '.summary.skippedTests // .skipped // 0' "$result_file" 2>/dev/null || echo "0")
                 
                 echo "Extracted counts - Passed: $passed, Failed: $failed, Skipped: $skipped"
                 
@@ -368,11 +384,14 @@ jobs:
                 echo "Processing subdirectory file: $result_file"
                 echo "File contents:"
                 cat "$result_file" | head -20
+                echo "JSON structure analysis:"
+                jq -r 'keys' "$result_file" 2>/dev/null || echo "Not valid JSON"
+                jq -r '.summary | keys' "$result_file" 2>/dev/null || echo "No summary object"
                 
-                # Extract test counts from JSON
-                passed=$(jq -r '.passed // 0' "$result_file" 2>/dev/null || echo "0")
-                failed=$(jq -r '.failed // 0' "$result_file" 2>/dev/null || echo "0")
-                skipped=$(jq -r '.skipped // 0' "$result_file" 2>/dev/null || echo "0")
+                # Extract test counts from JSON (try multiple possible structures)
+                passed=$(jq -r '.summary.passedTests // .passed // 0' "$result_file" 2>/dev/null || echo "0")
+                failed=$(jq -r '.summary.failedTests // .failed // 0' "$result_file" 2>/dev/null || echo "0")
+                skipped=$(jq -r '.summary.skippedTests // .skipped // 0' "$result_file" 2>/dev/null || echo "0")
                 
                 echo "Extracted counts - Passed: $passed, Failed: $failed, Skipped: $skipped"
                 
