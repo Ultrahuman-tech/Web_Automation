@@ -314,31 +314,82 @@ jobs:
     if: always() && inputs.slack_notification == 'true'
     
     steps:
-      - name: Send Slack Notification
-        uses: 8398a7/action-slack@v3
+      - name: Download Test Artifacts
+        uses: actions/download-artifact@v4
         with:
-          status: ${{ job.status }}
-          channel: '#qa-testing'
-          text: |
-            🎯 *Purchase Flow Test Results*
+          path: artifacts/
+          pattern: playwright-report-*
+          merge-multiple: true
+      
+      - name: Parse Test Results
+        id: parse-results
+        run: |
+          # Initialize counters
+          total_passed=0
+          total_failed=0
+          total_skipped=0
+          
+          # Parse test results from artifacts if available
+          if [ -d "artifacts" ]; then
+            echo "📊 Parsing test results from artifacts..."
             
-            *Configuration:*
-            • Environment: ${{ inputs.environment }}
-            ${{ inputs.custom_base_url && format('• Custom Base URL: {0} (overrides environment)', inputs.custom_base_url) || '' }}
-            • Language: ${{ inputs.language }}
-            • Country: ${{ inputs.country }}
-            • Max Combinations: ${{ inputs.max_combinations }}
-            • Workers: ${{ inputs.workers }}
-            • Mode: ${{ inputs.mode }}
-            
-            *Test Scope:*
-            • Total Combinations: ${{ needs.summary.outputs.total_combinations || 'N/A' }}
-            • Total Tests: ${{ needs.summary.outputs.total_tests || 'N/A' }}
-            
-            *Status:* ${{ job.status == 'success' && '✅ PASSED' || '❌ FAILED' }}
-            
-            *Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>
-            
-            *Artifacts:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Download Results>
+            # Count test results from JSON files
+            for result_file in artifacts/*/comprehensive-multi-language-*-results.json; do
+              if [ -f "$result_file" ]; then
+                echo "Processing: $result_file"
+                
+                # Extract test counts from JSON
+                passed=$(jq -r '.passed // 0' "$result_file" 2>/dev/null || echo "0")
+                failed=$(jq -r '.failed // 0' "$result_file" 2>/dev/null || echo "0")
+                skipped=$(jq -r '.skipped // 0' "$result_file" 2>/dev/null || echo "0")
+                
+                total_passed=$((total_passed + passed))
+                total_failed=$((total_failed + failed))
+                total_skipped=$((total_skipped + skipped))
+              fi
+            done
+          else
+            echo "⚠️ No artifacts found, using job status as fallback"
+            # Fallback: Use job status to determine basic results
+            if [ "${{ needs.purchase-flow-tests.result }}" = "success" ]; then
+              total_passed=${{ needs.summary.outputs.total_tests || 'N/A' }}
+              total_failed=0
+            else
+              total_passed=0
+              total_failed=${{ needs.summary.outputs.total_tests || 'N/A' }}
+            fi
+          fi
+          
+          # Calculate totals
+          total_tests=$((total_passed + total_failed + total_skipped))
+          
+          # Set outputs
+          echo "total_passed=$total_passed" >> $GITHUB_OUTPUT
+          echo "total_failed=$total_failed" >> $GITHUB_OUTPUT
+          echo "total_skipped=$total_skipped" >> $GITHUB_OUTPUT
+          echo "total_tests=$total_tests" >> $GITHUB_OUTPUT
+          
+          # Calculate pass rate
+          if [ $total_tests -gt 0 ]; then
+            pass_rate=$(( (total_passed * 100) / total_tests ))
+          else
+            pass_rate=0
+          fi
+          echo "pass_rate=$pass_rate" >> $GITHUB_OUTPUT
+          
+          echo "📈 Test Results Summary:"
+          echo "  ✅ Passed: $total_passed"
+          echo "  ❌ Failed: $total_failed"
+          echo "  ⏭️ Skipped: $total_skipped"
+          echo "  📊 Total: $total_tests"
+          echo "  📈 Pass Rate: $pass_rate%"
+
+      - name: Send Slack Notification
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "🎯 *Purchase Flow Test Results*\n\n*Configuration:*\n• Environment: ${{ inputs.environment }}\n${{ inputs.custom_base_url && format('• Custom Base URL: {0} (overrides environment)', inputs.custom_base_url) || '' }}\n• Language: ${{ inputs.language }}\n• Country: ${{ inputs.country }}\n• Max Combinations: ${{ inputs.max_combinations }}\n• Workers: ${{ inputs.workers }}\n• Mode: ${{ inputs.mode }}\n\n*Test Results:*\n• ✅ Passed: ${{ steps.parse-results.outputs.total_passed }}\n• ❌ Failed: ${{ steps.parse-results.outputs.total_failed }}\n• ⏭️ Skipped: ${{ steps.parse-results.outputs.total_skipped }}\n• 📊 Total Tests: ${{ steps.parse-results.outputs.total_tests }}\n• 📈 Pass Rate: ${{ steps.parse-results.outputs.pass_rate }}%\n\n*Test Scope:*\n• Total Combinations: ${{ needs.summary.outputs.total_combinations || 'N/A' }}\n• Expected Tests: ${{ needs.summary.outputs.total_tests || 'N/A' }}\n\n*Status:* ${{ job.status == 'success' && '✅ ALL TESTS PASSED' || '❌ SOME TESTS FAILED' }}\n\n*Execution Time:* ${{ github.run_duration || 'N/A' }}\n\n*Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>\n\n*Artifacts:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Download Results>"
+            }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
