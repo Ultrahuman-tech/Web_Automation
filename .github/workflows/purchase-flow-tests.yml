@@ -97,8 +97,54 @@ on:
           - 'false'
 
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      test-matrix: ${{ steps.matrix.outputs.matrix }}
+    
+    steps:
+      - name: Generate test matrix
+        id: matrix
+        run: |
+          # Initialize matrix array
+          matrix='[]'
+          
+          # Define languages and countries
+          if [ "${{ inputs.language }}" = "all" ]; then
+            languages=("en" "ja" "de" "th")
+          else
+            languages=("${{ inputs.language }}")
+          fi
+          
+          if [ "${{ inputs.country }}" = "all" ]; then
+            countries=("in" "us" "ae" "at" "global")
+          else
+            countries=("${{ inputs.country }}")
+          fi
+          
+          # Generate matrix combinations
+          for lang in "${languages[@]}"; do
+            for country in "${countries[@]}"; do
+              matrix=$(echo "$matrix" | jq --arg lang "$lang" --arg country "$country" '. += [{"language": $lang, "country": $country}]')
+            done
+          done
+          
+          echo "Generated matrix: $matrix"
+          # Use proper GitHub Actions output format
+          {
+            echo "matrix<<EOF"
+            echo "$matrix"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+      
+      - name: Display test matrix
+        run: |
+          echo "Test Matrix:"
+          echo '${{ steps.matrix.outputs.matrix }}' | jq '.'
+
   purchase-flow-tests:
     runs-on: ubuntu-latest
+    needs: setup
     
     strategy:
       matrix:
@@ -166,50 +212,13 @@ jobs:
           path: playwright-report/
           retention-days: 30
 
-  setup:
-    runs-on: ubuntu-latest
-    outputs:
-      test-matrix: ${{ steps.matrix.outputs.matrix }}
-    
-    steps:
-      - name: Generate test matrix
-        id: matrix
-        run: |
-          # Initialize matrix array
-          matrix='[]'
-          
-          # Define languages and countries
-          if [ "${{ inputs.language }}" = "all" ]; then
-            languages=("en" "ja" "de" "th")
-          else
-            languages=("${{ inputs.language }}")
-          fi
-          
-          if [ "${{ inputs.country }}" = "all" ]; then
-            countries=("in" "us" "ae" "at" "global")
-          else
-            countries=("${{ inputs.country }}")
-          fi
-          
-          # Generate matrix combinations
-          for lang in "${languages[@]}"; do
-            for country in "${countries[@]}"; do
-              matrix=$(echo "$matrix" | jq --arg lang "$lang" --arg country "$country" '. += [{"language": $lang, "country": $country}]')
-            done
-          done
-          
-          echo "Generated matrix: $matrix"
-          echo "matrix=$matrix" >> $GITHUB_OUTPUT
-      
-      - name: Display test matrix
-        run: |
-          echo "Test Matrix:"
-          echo '${{ steps.matrix.outputs.matrix }}' | jq '.'
-
   summary:
     runs-on: ubuntu-latest
     needs: [purchase-flow-tests, setup]
     if: always()
+    outputs:
+      total_combinations: ${{ steps.calculate.outputs.total_combinations }}
+      total_tests: ${{ steps.calculate.outputs.total_tests }}
     
     steps:
       - name: Download all artifacts
@@ -217,22 +226,9 @@ jobs:
         with:
           path: artifacts/
       
-      - name: Generate test summary
+      - name: Calculate test metrics
+        id: calculate
         run: |
-          echo "# 🎯 Purchase Flow Test Results Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## 📊 Test Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
-          if [ -n "${{ inputs.custom_base_url }}" ]; then
-            echo "- **Custom Base URL**: ${{ inputs.custom_base_url }} (overrides environment)" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "- **Language**: ${{ inputs.language }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Country**: ${{ inputs.country }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Max Combinations**: ${{ inputs.max_combinations }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Workers**: ${{ inputs.workers }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Mode**: ${{ inputs.mode }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
           # Calculate total tests
           if [ "${{ inputs.language }}" = "all" ]; then
             lang_count=4
@@ -256,12 +252,35 @@ jobs:
           
           total_tests=$((total_combinations * per_test))
           
+          echo "total_combinations=$total_combinations" >> $GITHUB_OUTPUT
+          echo "total_tests=$total_tests" >> $GITHUB_OUTPUT
+          
+          echo "📊 Calculated metrics:"
+          echo "  Total Combinations: $total_combinations"
+          echo "  Total Tests: $total_tests"
+
+      - name: Generate test summary
+        run: |
+          echo "# 🎯 Purchase Flow Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📊 Test Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ inputs.custom_base_url }}" ]; then
+            echo "- **Custom Base URL**: ${{ inputs.custom_base_url }} (overrides environment)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Language**: ${{ inputs.language }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Country**: ${{ inputs.country }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Max Combinations**: ${{ inputs.max_combinations }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workers**: ${{ inputs.workers }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: ${{ inputs.mode }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
           echo "## 🎯 Test Scope" >> $GITHUB_STEP_SUMMARY
           echo "- **Languages**: ${{ inputs.language }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Countries**: ${{ inputs.country }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Total Combinations**: $total_combinations" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tests per Combination**: $per_test" >> $GITHUB_STEP_SUMMARY
-          echo "- **Total Tests**: $total_tests" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Combinations**: ${{ steps.calculate.outputs.total_combinations }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests per Combination**: ${{ inputs.max_combinations }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Tests**: ${{ steps.calculate.outputs.total_tests }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           echo "## 📁 Artifacts Generated" >> $GITHUB_STEP_SUMMARY
@@ -298,8 +317,8 @@ jobs:
           echo "TEST_CONFIG_COMBINATIONS=${{ inputs.max_combinations }}" >> $GITHUB_ENV
           echo "TEST_CONFIG_WORKERS=${{ inputs.workers }}" >> $GITHUB_ENV
           echo "TEST_CONFIG_MODE=${{ inputs.mode }}" >> $GITHUB_ENV
-          echo "TEST_TOTAL_COMBINATIONS=$total_combinations" >> $GITHUB_ENV
-          echo "TEST_TOTAL_TESTS=$total_tests" >> $GITHUB_ENV
+          echo "TEST_TOTAL_COMBINATIONS=${{ steps.calculate.outputs.total_combinations }}" >> $GITHUB_ENV
+          echo "TEST_TOTAL_TESTS=${{ steps.calculate.outputs.total_tests }}" >> $GITHUB_ENV
           echo "TEST_WORKFLOW_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_ENV
 
   slack-notification:
@@ -308,31 +327,162 @@ jobs:
     if: always() && inputs.slack_notification == 'true'
     
     steps:
-      - name: Send Slack Notification
-        uses: 8398a7/action-slack@v3
+      - name: Download Test Artifacts
+        uses: actions/download-artifact@v4
         with:
-          status: ${{ job.status }}
-          channel: '#qa-testing'
-          text: |
-            🎯 *Purchase Flow Test Results*
+          path: artifacts/
+          pattern: test-results-*
+          merge-multiple: true
+      
+      - name: Download Playwright Reports
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          pattern: playwright-report-*
+          merge-multiple: true
+      
+      - name: Parse Test Results
+        id: parse-results
+        run: |
+          # Initialize counters
+          total_passed=0
+          total_failed=0
+          total_skipped=0
+          
+          # Parse test results from artifacts if available
+          if [ -d "artifacts" ]; then
+            echo "📊 Parsing test results from artifacts..."
+            echo "Artifacts directory contents:"
+            find artifacts -type f -name "*.json" | head -10
             
-            *Configuration:*
-            • Environment: ${{ inputs.environment }}
-            ${{ inputs.custom_base_url && format('• Custom Base URL: {0} (overrides environment)', inputs.custom_base_url) || '' }}
-            • Language: ${{ inputs.language }}
-            • Country: ${{ inputs.country }}
-            • Max Combinations: ${{ inputs.max_combinations }}
-            • Workers: ${{ inputs.workers }}
-            • Mode: ${{ inputs.mode }}
+            # Count test results from JSON files
+            for result_file in artifacts/*/comprehensive-multi-language-*-results.json; do
+              if [ -f "$result_file" ]; then
+                echo "Processing: $result_file"
+                echo "File contents:"
+                cat "$result_file" | head -20
+                echo "JSON structure analysis:"
+                jq -r 'keys' "$result_file" 2>/dev/null || echo "Not valid JSON"
+                jq -r '.summary | keys' "$result_file" 2>/dev/null || echo "No summary object"
+                
+                # Extract test counts from JSON (try multiple possible structures)
+                passed=$(jq -r '.summary.passedTests // .passed // 0' "$result_file" 2>/dev/null || echo "0")
+                failed=$(jq -r '.summary.failedTests // .failed // 0' "$result_file" 2>/dev/null || echo "0")
+                skipped=$(jq -r '.summary.skippedTests // .skipped // 0' "$result_file" 2>/dev/null || echo "0")
+                
+                echo "Extracted counts - Passed: $passed, Failed: $failed, Skipped: $skipped"
+                
+                total_passed=$((total_passed + passed))
+                total_failed=$((total_failed + failed))
+                total_skipped=$((total_skipped + skipped))
+              fi
+            done
             
-            *Test Scope:*
-            • Total Combinations: ${{ needs.summary.outputs.total_combinations || 'N/A' }}
-            • Total Tests: ${{ needs.summary.outputs.total_tests || 'N/A' }}
+            # Also try to find JSON files in subdirectories
+            for result_file in artifacts/*/*/comprehensive-multi-language-*-results.json; do
+              if [ -f "$result_file" ]; then
+                echo "Processing subdirectory file: $result_file"
+                echo "File contents:"
+                cat "$result_file" | head -20
+                echo "JSON structure analysis:"
+                jq -r 'keys' "$result_file" 2>/dev/null || echo "Not valid JSON"
+                jq -r '.summary | keys' "$result_file" 2>/dev/null || echo "No summary object"
+                
+                # Extract test counts from JSON (try multiple possible structures)
+                passed=$(jq -r '.summary.passedTests // .passed // 0' "$result_file" 2>/dev/null || echo "0")
+                failed=$(jq -r '.summary.failedTests // .failed // 0' "$result_file" 2>/dev/null || echo "0")
+                skipped=$(jq -r '.summary.skippedTests // .skipped // 0' "$result_file" 2>/dev/null || echo "0")
+                
+                echo "Extracted counts - Passed: $passed, Failed: $failed, Skipped: $skipped"
+                
+                total_passed=$((total_passed + passed))
+                total_failed=$((total_failed + failed))
+                total_skipped=$((total_skipped + skipped))
+              fi
+            done
+          else
+            echo "⚠️ No artifacts found, using job status as fallback"
+            # Fallback: Use job status to determine basic results
+            if [ "${{ needs.purchase-flow-tests.result }}" = "success" ]; then
+              total_passed=${{ needs.summary.outputs.total_tests || 'N/A' }}
+              total_failed=0
+            else
+              total_passed=0
+              total_failed=${{ needs.summary.outputs.total_tests || 'N/A' }}
+            fi
+          fi
+          
+          # If still no results found, try to parse from Playwright HTML reports
+          if [ $total_tests -eq 0 ] && [ -d "artifacts" ]; then
+            echo "🔍 Trying to parse Playwright HTML reports..."
             
-            *Status:* ${{ job.status == 'success' && '✅ PASSED' || '❌ FAILED' }}
+            # Download Playwright reports
+            for report_dir in artifacts/playwright-report-*; do
+              if [ -d "$report_dir" ]; then
+                echo "Found Playwright report: $report_dir"
+                
+                # Try to extract test counts from HTML or JSON files in the report
+                if [ -f "$report_dir/data/test-results.json" ]; then
+                  echo "Found test-results.json in $report_dir"
+                  passed=$(jq -r '[.suites[].specs[] | select(.tests[].results[].status == "passed")] | length' "$report_dir/data/test-results.json" 2>/dev/null || echo "0")
+                  failed=$(jq -r '[.suites[].specs[] | select(.tests[].results[].status == "failed")] | length' "$report_dir/data/test-results.json" 2>/dev/null || echo "0")
+                  skipped=$(jq -r '[.suites[].specs[] | select(.tests[].results[].status == "skipped")] | length' "$report_dir/data/test-results.json" 2>/dev/null || echo "0")
+                  
+                  echo "Playwright report counts - Passed: $passed, Failed: $failed, Skipped: $skipped"
+                  
+                  total_passed=$((total_passed + passed))
+                  total_failed=$((total_failed + failed))
+                  total_skipped=$((total_skipped + skipped))
+                fi
+              fi
+            done
+          fi
+          
+          # Calculate totals
+          total_tests=$((total_passed + total_failed + total_skipped))
+          
+          # Final fallback: If still no results, use expected test count based on job status
+          if [ $total_tests -eq 0 ]; then
+            echo "🔄 Final fallback: Using expected test count based on job status"
+            expected_tests=${{ needs.summary.outputs.total_tests || '0' }}
             
-            *Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>
-            
-            *Artifacts:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Download Results>
+            if [ "${{ needs.purchase-flow-tests.result }}" = "success" ]; then
+              total_passed=$expected_tests
+              total_failed=0
+            else
+              total_passed=0
+              total_failed=$expected_tests
+            fi
+            total_tests=$expected_tests
+          fi
+          
+          # Set outputs
+          echo "total_passed=$total_passed" >> $GITHUB_OUTPUT
+          echo "total_failed=$total_failed" >> $GITHUB_OUTPUT
+          echo "total_skipped=$total_skipped" >> $GITHUB_OUTPUT
+          echo "total_tests=$total_tests" >> $GITHUB_OUTPUT
+          
+          # Calculate pass rate
+          if [ $total_tests -gt 0 ]; then
+            pass_rate=$(( (total_passed * 100) / total_tests ))
+          else
+            pass_rate=0
+          fi
+          echo "pass_rate=$pass_rate" >> $GITHUB_OUTPUT
+          
+          echo "📈 Test Results Summary:"
+          echo "  ✅ Passed: $total_passed"
+          echo "  ❌ Failed: $total_failed"
+          echo "  ⏭️ Skipped: $total_skipped"
+          echo "  📊 Total: $total_tests"
+          echo "  📈 Pass Rate: $pass_rate%"
+
+      - name: Send Slack Notification
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "🎯 *Purchase Flow Test Results*\n\n*Configuration:*\n• Environment: ${{ inputs.environment }}\n${{ inputs.custom_base_url && format('• Custom Base URL: {0} (overrides environment)', inputs.custom_base_url) || '' }}\n• Language: ${{ inputs.language }}\n• Country: ${{ inputs.country }}\n• Max Combinations: ${{ inputs.max_combinations }}\n• Workers: ${{ inputs.workers }}\n\n*Test Results:*\n• ✅ Passed: ${{ steps.parse-results.outputs.total_passed }}\n• ❌ Failed: ${{ steps.parse-results.outputs.total_failed }}\n• ⏭️ Skipped: ${{ steps.parse-results.outputs.total_skipped }}\n• 📊 Total Tests: ${{ steps.parse-results.outputs.total_tests }}\n• 📈 Pass Rate: ${{ steps.parse-results.outputs.pass_rate }}%\n\n*Test Scope:*\n• Total Combinations: ${{ needs.summary.outputs.total_combinations || 'N/A' }}\n• Expected Tests: ${{ needs.summary.outputs.total_tests || 'N/A' }}\n\n*Status:* ${{ job.status == 'success' && '✅ ALL TESTS PASSED' || '❌ SOME TESTS FAILED' }}\n\n*Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>"
+            }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
