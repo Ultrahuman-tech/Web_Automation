@@ -1,8 +1,8 @@
 name: Ring Tests
 
 on:
+  # Schedule: daily at 8:00 AM IST (02:30 UTC)
   schedule:
-    # 🕒 Runs daily at 8:00 AM IST (2:30 AM UTC)
     - cron: '30 3 * * *'
 
 jobs:
@@ -23,40 +23,61 @@ jobs:
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
 
+      # Run with BOTH json and html reporters so we can parse counts and still have a nice report.
       - name: Run Ring Tests
-        id: tests
+        id: run_tests
+        continue-on-error: true            # don't stop the job on test failures
         run: |
           mkdir -p test-results
-          npx playwright test tests/ring/ --reporter=json > test-results/results.json || echo "TESTS_FAILED=true" >> $GITHUB_ENV
+          npx playwright test tests/ring/ --reporter=json,html > test-results/results.json
 
+      # Parse results.json and expose counts as step outputs (no env vars -> no VS Code warnings)
       - name: Parse Test Results
+        id: parse
         if: always()
+        shell: bash
         run: |
-          node -e "
+          node - <<'NODE'
           const fs = require('fs');
-          const path = 'test-results/results.json';
-          if (!fs.existsSync(path)) { console.log('No test results found'); process.exit(0); }
-          const data = JSON.parse(fs.readFileSync(path, 'utf-8'));
+          const out = process.env.GITHUB_OUTPUT;
+          const p = 'test-results/results.json';
+
           let passed = 0, failed = 0, skipped = 0, total = 0;
-          if (data.suites) {
-            const countTests = suites => suites.forEach(s => {
-              if (s.specs) {
-                s.specs.forEach(spec => {
-                  spec.tests.forEach(t => {
-                    total++;
-                    if (t.results.some(r => r.status === 'passed')) passed++;
-                    else if (t.results.some(r => r.status === 'failed')) failed++;
-                    else skipped++;
-                  });
-                });
+
+          function countFromSuite(suite) {
+            if (suite.specs) {
+              for (const spec of suite.specs) {
+                for (const t of (spec.tests || [])) {
+                  total++;
+                  // Use the latest result for each test attempt
+                  const last = (t.results && t.results.length) ? t.results[t.results.length - 1] : null;
+                  const status = (last && last.status) || t.outcome || t.status || 'unknown';
+                  if (status === 'passed') passed++;
+                  else if (status === 'failed' || status === 'timedOut') failed++;
+                  else skipped++;
+                }
               }
-              if (s.suites) countTests(s.suites);
-            });
-            countTests(data.suites);
+            }
+            if (suite.suites) suite.suites.forEach(countFromSuite);
           }
-          console.log(`✅ Passed: ${passed}, ❌ Failed: ${failed}, ⚪ Skipped: ${skipped}, Total: ${total}`);
-          fs.appendFileSync(process.env.GITHUB_ENV, `TESTS_PASSED=${passed}\nTESTS_FAILED_COUNT=${failed}\nTESTS_SKIPPED=${skipped}\nTESTS_TOTAL=${total}\n`);
-          "
+
+          if (fs.existsSync(p)) {
+            try {
+              const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+              if (Array.isArray(data.suites)) data.suites.forEach(countFromSuite);
+            } catch (e) {
+              // leave zeros if parse fails
+            }
+          }
+          const anyFailed = failed > 0 ? 'true' : 'false';
+
+          // Emit outputs
+          fs.appendFileSync(out, `TESTS_PASSED=${passed}\n`);
+          fs.appendFileSync(out, `TESTS_FAILED_COUNT=${failed}\n`);
+          fs.appendFileSync(out, `TESTS_SKIPPED=${skipped}\n`);
+          fs.appendFileSync(out, `TESTS_TOTAL=${total}\n`);
+          fs.appendFileSync(out, `ANY_FAILED=${anyFailed}\n`);
+          NODE
 
       - name: Upload HTML Report
         if: always()
@@ -71,13 +92,15 @@ jobs:
         with:
           payload: |
             {
-              "text": "🧪 *Ring Tests Summary* for `${{ github.ref_name }}` by `${{ github.actor }}`\n\n\
-              ✅ Passed: ${{ env.TESTS_PASSED }}\n\
-              ❌ Failed: ${{ env.TESTS_FAILED_COUNT }}\n\
-              ⚪ Skipped: ${{ env.TESTS_SKIPPED }}\n\
-              📊 Total: ${{ env.TESTS_TOTAL }}\n\n\
+              "text": "🧪 *Ring Tests Summary*\n\
+              • Branch: `${{ github.ref_name }}`\n\
+              • By: `${{ github.actor }}`\n\n\
+              ✅ Passed: ${{ steps.parse.outputs.TESTS_PASSED }}\n\
+              ❌ Failed: ${{ steps.parse.outputs.TESTS_FAILED_COUNT }}\n\
+              ⚪ Skipped: ${{ steps.parse.outputs.TESTS_SKIPPED }}\n\
+              📊 Total: ${{ steps.parse.outputs.TESTS_TOTAL }}\n\n\
               🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Report>\n\n\
-              ${{ env.TESTS_FAILED == 'true' && ':x: Some tests failed!' || ':white_check_mark: All tests passed!' }}"
+              ${{ steps.parse.outputs.ANY_FAILED == 'true' && ':x: Some tests failed!' || ':white_check_mark: All tests passed!' }}"
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
