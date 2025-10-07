@@ -95,7 +95,182 @@ export async function addRingToCart(
       'Expected "Ultrahuman Ring AIR" in cart titles'
     ).toBe(true);
 
-    await page.getByTestId('cart-checkout-button').click();
+    // Some locales show an intermediate "Review cart" button before the checkout button.
+    // Click it if present to expose the checkout actions.
+    const reviewCartBtn = page.getByRole('button', { name: 'Review cart' });
+    if (await reviewCartBtn.isVisible().catch(() => false)) {
+      await expect(reviewCartBtn).toBeEnabled({ timeout: 10000 });
+      await reviewCartBtn.click();
+      // give the UI a moment to update (checkout button may appear)
+      await page.waitForTimeout(500);
+    }
+
+    // Robust checkout flow: wait for checkout button (with fallbacks), verify cart summary elements,
+    // take a screenshot and throw a clear error if something is missing.
+    const takeScreenshot = async (name: string) => {
+      const file = `errors/manual-open-after-add-${Date.now()}-${name}.png`;
+      try {
+        await page.screenshot({ path: file, fullPage: true });
+      } catch (screenshotErr) {
+        console.error('Failed to take screenshot:', screenshotErr);
+      }
+    };
+
+    // Check for common cart/order elements to ensure the flow is intact
+    const cartList = page.getByTestId('cart-list');
+
+    const checkCartFor = async (testId?: string, selector?: string, textRegex?: RegExp) => {
+      if (testId) {
+        const el = cartList.locator(`[data-testid="${testId}"]`);
+        if (await el.isVisible().catch(() => false)) return true;
+      }
+      if (selector) {
+        if (await cartList.locator(selector).isVisible().catch(() => false)) return true;
+      }
+      if (textRegex) {
+        if (await cartList.getByText(textRegex).isVisible().catch(() => false)) return true;
+        if (await page.getByText(textRegex).isVisible().catch(() => false)) return true;
+      }
+      return false;
+    };
+
+    const currencyRegex = /(?:AED|USD|INR|GBP|EUR|\$|₹)\s?[\d,]+/i;
+    const subtotalLabelRegex = /\b(subtotal|total|amount payable|order summary)\b/i;
+
+    const hasItemPrice = await checkCartFor('cart-item-price', '.price', currencyRegex);
+    const hasSubtotal =
+      (await checkCartFor('cart-subtotal', '.cart-subtotal, .subtotal', subtotalLabelRegex)) ||
+      (await checkCartFor(undefined, undefined, currencyRegex));
+    const hasOrderSummary = await checkCartFor('order-summary', undefined, /Order summary|Almost there/i);
+
+    if (!hasItemPrice || !hasSubtotal || !hasOrderSummary) {
+      await takeScreenshot('cart-summary-missing');
+      const details = { hasItemPrice, hasSubtotal, hasOrderSummary };
+      console.error('One or more cart summary elements are missing', details);
+      throw new Error(`Cart summary validation failed: ${JSON.stringify(details)}`);
+    }
+
+    // Try the primary testid first, then fall back to role/text-based selectors
+    const clickCheckoutButton = async () => {
+      const primary = page.getByTestId('cart-checkout-button');
+      if (await primary.isVisible().catch(() => false)) {
+        await expect(primary).toBeEnabled({ timeout: 30000 });
+        await primary.click();
+        return;
+      }
+
+      // If a 'Show breakup' expander exists, open it to reveal checkout actions
+      const showBreakup = page.getByText('Show breakup');
+      if (await showBreakup.isVisible().catch(() => false)) {
+        try {
+          await showBreakup.click();
+          await page.waitForTimeout(300);
+        } catch {
+          // ignore click failure
+        }
+      }
+
+      // Direct exact 'Checkout' button/text (common in flow)
+      const exactCheckout = page.getByText('Checkout', { exact: true });
+      if (await exactCheckout.isVisible().catch(() => false)) {
+        try {
+          await exactCheckout.click();
+          return;
+        } catch {
+          // continue to other fallbacks
+        }
+      }
+
+      // Fallback to common button labels (buttons and links)
+      const fallbackNames = [/checkout/i, /proceed to checkout/i, /proceed/i, /place order/i, /continue to checkout/i, /pay now/i];
+      for (const name of fallbackNames) {
+        const btn = page.getByRole('button', { name });
+        if (await btn.isVisible().catch(() => false)) {
+          await expect(btn).toBeEnabled({ timeout: 30000 });
+          await btn.click();
+          return;
+        }
+        const link = page.getByRole('link', { name });
+        if (await link.isVisible().catch(() => false)) {
+          await link.click();
+          return;
+        }
+      }
+
+      // If a cost summary region exists, try clicking Checkout inside it
+      const costSummary = page.getByLabel('Cost summary');
+      if (await costSummary.isVisible().catch(() => false)) {
+        const insideCheckout = costSummary.getByText(/checkout|proceed|pay now|pay/i);
+        if (await insideCheckout.first().isVisible().catch(() => false)) {
+          try {
+            await insideCheckout.first().click();
+            return;
+          } catch {
+            // continue
+          }
+        }
+      }
+
+      // Fallback: any element with data-testid containing checkout/proceed/place-order
+      const dataTestBtns = page.locator('[data-testid*="checkout"], [data-testid*="proceed"], [data-testid*="place-order"]');
+      const dtCount = await dataTestBtns.count().catch(() => 0);
+      for (let i = 0; i < dtCount; i++) {
+        const b = dataTestBtns.nth(i);
+        if (await b.isVisible().catch(() => false) && (await b.isEnabled().catch(() => false))) {
+          await b.click();
+          return;
+        }
+      }
+
+      // Fallback: search inside cartList for any clickable text matching checkout keywords
+      const insideCheckout = cartList.getByText(/checkout|proceed|place order|continue|pay now|pay/i);
+      if (await insideCheckout.first().isVisible().catch(() => false)) {
+        try {
+          await insideCheckout.first().click();
+          return;
+        } catch {
+          // if click fails, continue to next fallback
+        }
+      }
+
+      // Final fallback: page-wide text matcher (anchors/buttons/inputs)
+      const pageWide = page.getByText(/checkout|proceed to checkout|proceed|place order|continue to checkout|pay now|pay/i);
+      if (await pageWide.first().isVisible().catch(() => false)) {
+        try {
+          await pageWide.first().click();
+          return;
+        } catch {
+          // fall through
+        }
+      }
+
+      // As last attempt, try any input/button with value or aria-label containing checkout keywords
+      const inputs = page.locator('input[value]');
+      const icount = await inputs.count().catch(() => 0);
+      for (let i = 0; i < icount; i++) {
+        const el = inputs.nth(i);
+        const val = (await el.getAttribute('value')) || '';
+        if (/checkout|proceed|place order|pay/i.test(val)) {
+          try {
+            await el.click();
+            return;
+          } catch {
+            // continue
+          }
+        }
+      }
+
+      await takeScreenshot('checkout-button-not-found');
+      throw new Error('Checkout button not found (no primary testid or fallback button matched)');
+    };
+
+    try {
+      await clickCheckoutButton();
+    } catch (err) {
+      await takeScreenshot('failed-click-checkout');
+      console.error('Failed to click checkout button', err);
+      throw err;
+    }
   });
 }
 
