@@ -108,9 +108,11 @@ jobs:
           NODE
           )
           # Write payload to GITHUB_OUTPUT using multiline delimiter to preserve content
-          echo "payload<<EOF" >> "$GITHUB_OUTPUT"
-          printf '%s' "$payload" >> "$GITHUB_OUTPUT"
-          echo "\nEOF" >> "$GITHUB_OUTPUT"
+          {
+            echo "payload<<EOF"
+            printf '%s\n' "$payload"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
           GITHUB_ACTOR: ${{ github.actor }}
