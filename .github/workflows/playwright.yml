@@ -8,6 +8,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,7 +31,7 @@ jobs:
         continue-on-error: true            # don't stop the job on test failures
         run: |
           mkdir -p test-results
-          npx playwright test tests/ring/ --reporter=json=test-results/results.json,html
+          npx playwright test tests/ring/ --reporter=json,html
 
       # Parse results.json and expose counts as step outputs (no env vars -> no VS Code warnings)
       - name: Parse Test Results
@@ -40,7 +42,7 @@ jobs:
           node - <<'NODE'
           const fs = require('fs');
           const out = process.env.GITHUB_OUTPUT;
-          const p = 'test-results/results.json';
+          const p = process.env.PLAYWRIGHT_JSON_OUTPUT_NAME || 'test-results/results.json';
 
           let passed = 0, failed = 0, skipped = 0, total = 0;
 
@@ -64,10 +66,22 @@ jobs:
           if (fs.existsSync(p)) {
             try {
               const data = JSON.parse(fs.readFileSync(p, 'utf8'));
-              if (Array.isArray(data.suites)) data.suites.forEach(countFromSuite);
+              if (data && data.stats) {
+                const stats = data.stats;
+                passed = Number(stats.expected || 0) + Number(stats.flaky || 0);
+                failed = Number(stats.unexpected || 0);
+                skipped = Number(stats.skipped || 0);
+                total = Number(stats.total || (passed + failed + skipped));
+              }
+              if (total === 0 && Array.isArray(data?.suites)) {
+                data.suites.forEach(countFromSuite);
+                total = passed + failed + skipped;
+              }
             } catch (e) {
-              // leave zeros if parse fails
+              console.error(`Failed to parse ${p}:`, e);
             }
+          } else {
+            console.warn(`Results file not found at ${p}`);
           }
           const anyFailed = failed > 0 ? 'true' : 'false';
 
