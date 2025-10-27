@@ -11,6 +11,10 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
+const jsonReportPath = process.env.PLAYWRIGHT_JSON_OUTPUT_NAME || 'test-results/results.json';
+const htmlReportPath = process.env.PLAYWRIGHT_HTML_REPORT || 'playwright-report';
+const htmlOpen = process.env.PW_TEST_HTML_REPORT_OPEN || 'never';
+
 export default defineConfig({
   testDir: './tests',
   /* Run tests in files in parallel */
@@ -23,7 +27,10 @@ export default defineConfig({
   // workers: process.env.CI ? 1 : undefined,
    workers: process.env.CI ? 4 : 4,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: 'html',
+  reporter: [
+    ['html', { outputFolder: htmlReportPath, open: htmlOpen }],
+    ['json', { outputFile: jsonReportPath }],
+  ],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     

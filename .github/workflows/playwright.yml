@@ -4,12 +4,15 @@ on:
   # Schedule: daily at 8:00 AM IST (02:30 UTC)
   schedule:
     - cron: '30 3 * * *'
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
     env:
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
+      PW_TEST_HTML_REPORT_OPEN: never
+      PLAYWRIGHT_HTML_REPORT: playwright-report
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,8 +33,8 @@ jobs:
         id: run_tests
         continue-on-error: true            # don't stop the job on test failures
         run: |
-          mkdir -p test-results
-          npx playwright test tests/ring/ --reporter=json,html
+          mkdir -p "$(dirname "${PLAYWRIGHT_JSON_OUTPUT_NAME}")"
+          npx playwright test tests/ring/
 
       # Parse results.json and expose counts as step outputs (no env vars -> no VS Code warnings)
       - name: Parse Test Results
