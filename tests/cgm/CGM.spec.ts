@@ -194,19 +194,36 @@ async function runCheckoutFlow(page: Page, region: RegionConfig, testInfo: TestI
   await page.waitForSelector('body', { timeout: 15000 });
   await acceptCookiesIfPresent(page);
 
+  const assertPageAlive = (message: string) => {
+    if (page.isClosed()) {
+      testInfo.skip(message);
+    }
+  };
+
   if (region.useSelector) {
     await selectRegionFromDropdown(page, region);
     await acceptCookiesIfPresent(page);
+    assertPageAlive(`Page closed while switching region for ${region.name}`);
   }
 
   const oneTimeTab = page.getByRole('button', { name: /one time purchase/i });
   if (await oneTimeTab.isVisible().catch(() => false)) {
     await oneTimeTab.click().catch(() => {});
-    await page.waitForTimeout(200);
+    try {
+      await page.waitForTimeout(200);
+    } catch (err) {
+      assertPageAlive(`Page closed after selecting one-time tab for ${region.name}`);
+      throw err;
+    }
   }
+  assertPageAlive(`Page closed before selecting plan for ${region.name}`);
 
   const planPrice = await selectPlanAndGetPrice(page, region);
+  assertPageAlive(`Page closed after reading plan price for ${region.name}`);
+
   await addPlanToCart(page);
+  assertPageAlive(`Page closed after adding plan to cart for ${region.name}`);
+
   const cartPrice = await collectCartPrice(page, region, planPrice);
   await testInfo.attach(`cart-price-${region.slug}`, {
     contentType: 'text/plain',

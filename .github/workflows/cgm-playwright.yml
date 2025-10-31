@@ -31,7 +31,7 @@ jobs:
       - name: Run CGM Playwright suite
         id: run_tests
         continue-on-error: true
-        run: npx playwright test tests/cgm/CGM.spec.ts --project=chromium
+        run: npx playwright test tests/cgm/CGM.spec.ts --project=chromium --workers=2
 
       - name: Parse Test Results
         id: parse
