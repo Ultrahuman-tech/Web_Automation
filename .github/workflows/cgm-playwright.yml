@@ -2,6 +2,11 @@ name: CGM Playwright Tests
 
 on:
   workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Override pricing base URL (e.g. https://stage.example.com/pricing/)'
+        required: false
+        default: 'https://www.ultrahuman.com/pricing/'
   schedule:
     - cron: '30 0 * * *'
 
@@ -12,6 +17,7 @@ jobs:
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
       PW_TEST_HTML_REPORT_OPEN: never
       PLAYWRIGHT_HTML_REPORT: playwright-report
+      CGM_BASE_URL: ${{ github.event.inputs.base_url || 'https://www.ultrahuman.com/pricing/' }}
 
     steps:
       - name: Check out repository

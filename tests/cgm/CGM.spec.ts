@@ -39,7 +39,7 @@ const REGION_CONFIGS: RegionConfig[] = [
   { name: 'Cyprus', slug: 'cy', useSelector: true, planText: /4 weeks/i },
 ];
 
-const BASE_PRICING_URL = 'https://www.ultrahuman.com/pricing/';
+const BASE_PRICING_URL = process.env.CGM_BASE_URL ?? 'https://www.ultrahuman.com/pricing/';
 
 type PriceInfo = {
   text: string;
