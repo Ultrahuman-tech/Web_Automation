@@ -196,7 +196,7 @@ async function runCheckoutFlow(page: Page, region: RegionConfig, testInfo: TestI
 
   const assertPageAlive = (message: string) => {
     if (page.isClosed()) {
-      testInfo.skip(message);
+      testInfo.skip(true, message);
     }
   };
 
