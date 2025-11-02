@@ -5,6 +5,11 @@ on:
   schedule:
     - cron: '30 3 * * *'
   workflow_dispatch:
+    inputs:
+      ring_base_url:
+        description: 'Override ring base URL (e.g. https://stage.example.com/ring/buy/)'
+        required: false
+        default: 'https://ultrahuman.com/ring/buy/'
 
 jobs:
   test:
@@ -13,6 +18,7 @@ jobs:
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
       PW_TEST_HTML_REPORT_OPEN: never
       PLAYWRIGHT_HTML_REPORT: playwright-report
+      RING_BASE_URL: ${{ github.event.inputs.ring_base_url || 'https://ultrahuman.com/ring/buy/' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
