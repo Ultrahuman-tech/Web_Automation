@@ -13,9 +13,12 @@ export const SIZES = ['open', '5', '6', '7', '8', '9', '10', '11', '12', '13', '
 
 export const ADDON_PLANS = ['1', '2'];
 
+const BASE_RING_URL = process.env.RING_BASE_URL ?? 'https://ultrahuman.com/ring/buy/';
+
 export async function openLanding(page: Page, country: string) {
   await test.step(`Navigate to ${country} landing page`, async () => {
-    const url = `https://ultrahuman.com/ring/buy/${country}/`;
+    const base = BASE_RING_URL.endsWith('/') ? BASE_RING_URL : `${BASE_RING_URL}/`;
+    const url = `${base}${country}/`;
     // best-effort navigation: try primary, then retry once with a longer timeout and different waitUntil
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -248,4 +251,3 @@ export async function addRingToCart(
     }
   });
 }
-
