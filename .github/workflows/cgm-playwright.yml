@@ -111,6 +111,7 @@ jobs:
           payload=$(node - <<'NODE'
           const payload = {
             text: `🧪 *CGM Tests Summary*\n` +
+                  `• Base URL: ${process.env.CGM_BASE_URL}\n` +
                   `• Branch: ${process.env.GITHUB_REF_NAME}\n` +
                   `• By: ${process.env.GITHUB_ACTOR}\n\n` +
                   `✅ Passed: ${process.env.TESTS_PASSED}\n` +
