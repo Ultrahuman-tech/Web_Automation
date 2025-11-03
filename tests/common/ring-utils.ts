@@ -1,4 +1,4 @@
-import { Page, expect, test } from '@playwright/test';
+import { Page, expect, test, Locator } from '@playwright/test';
 
 export const COLORS = [
   'ROSE_GOLD',
@@ -14,6 +14,48 @@ export const SIZES = ['open', '5', '6', '7', '8', '9', '10', '11', '12', '13', '
 export const ADDON_PLANS = ['1', '2'];
 
 const BASE_RING_URL = process.env.RING_BASE_URL ?? 'https://ultrahuman.com/ring/buy/';
+const PRICE_REGEX =
+  /(?:₹|£|€|\$|AED|USD|SGD|AUD|INR)\s*[\d.,]+(?:\s*\(Tax incl\.\))?/gi;
+
+const normalizePriceDigits = (text: string) => text.replace(/[^\d]/g, '');
+
+async function collectPricesFromLocator(locator: Locator): Promise<Set<string>> {
+  const set = new Set<string>();
+  let texts: string[] = [];
+  try {
+    texts = await locator.allInnerTexts();
+  } catch {
+    return set;
+  }
+
+  for (const text of texts) {
+    if (!text) continue;
+    const matches = text.match(PRICE_REGEX);
+    if (!matches) continue;
+    for (const raw of matches) {
+      const cleaned = raw.replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
+      if (cleaned) set.add(cleaned);
+    }
+  }
+  return set;
+}
+
+async function collectProductPrices(page: Page): Promise<Set<string>> {
+  const result = new Set<string>();
+  const sources: Locator[] = [
+    page.locator('[data-testid*="price"]'),
+    page.locator('[class*="price"]'),
+    page.locator('span'),
+    page.locator('p'),
+  ];
+
+  for (const source of sources) {
+    const subset = await collectPricesFromLocator(source);
+    subset.forEach((value) => result.add(value));
+    if (result.size >= 6) break;
+  }
+  return result;
+}
 
 export async function openLanding(page: Page, country: string) {
   await test.step(`Navigate to ${country} landing page`, async () => {
@@ -67,6 +109,11 @@ export async function addRingToCart(
     });
   }
 
+  const productPriceCandidates = await collectProductPrices(page);
+  const normalizedProductPrices = new Set(
+    Array.from(productPriceCandidates, normalizePriceDigits).filter(Boolean)
+  );
+
   await test.step('Handle upsell modals', async () => {
     try {
       const proactiveBtn = page.getByRole('button', { name: /No, I don’t want proactive/i });
@@ -108,6 +155,33 @@ export async function addRingToCart(
       titles.some((t) => t.includes('Ultrahuman Ring AIR')),
       'Expected "Ultrahuman Ring AIR" in cart titles'
     ).toBe(true);
+
+    const cartLocator = page.getByTestId('cart-list');
+    const cartPriceCandidates = await collectPricesFromLocator(cartLocator);
+    const normalizedCartPrices = new Set(
+      Array.from(cartPriceCandidates, normalizePriceDigits).filter(Boolean)
+    );
+
+    const hasOverlap = Array.from(normalizedProductPrices).some((value) =>
+      normalizedCartPrices.has(value)
+    );
+
+    if (!hasOverlap) {
+      await page.screenshot({
+        path: `errors/ring-price-mismatch-${Date.now()}.png`,
+        fullPage: true,
+      });
+      console.error(
+        '[Ring] Price mismatch detected',
+        { productPriceCandidates: Array.from(productPriceCandidates) },
+        { cartPriceCandidates: Array.from(cartPriceCandidates) }
+      );
+      throw new Error('Price mismatch between product page and cart');
+    }
+
+    console.log(
+      `[Ring] Price consistency confirmed: ${Array.from(productPriceCandidates).join(', ')} ➜ ${Array.from(cartPriceCandidates).join(', ')}`
+    );
 
     // Robust checkout flow: try multiple fallbacks for different locales / UI states
     const clickCheckout = async () => {
