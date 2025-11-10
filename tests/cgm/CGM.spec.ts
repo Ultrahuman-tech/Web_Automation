@@ -49,10 +49,10 @@ type PriceInfo = {
 
 const EXPECTED_PRICES: Record<string, PriceInfo> = {
   in: { text: '₹34,999', value: 34999, currency: '₹' },
-  gb: { text: '£126.75', value: 126.75, currency: '£' },
+  gb: { text: '£168', value: 168, currency: '£' },
 };
 
-const DEFAULT_EXPECTED_PRICE: PriceInfo = { text: '€141.75', value: 141.75, currency: '€' };
+const DEFAULT_EXPECTED_PRICE: PriceInfo = { text: '€189', value: 189, currency: '€' };
 
 const CURRENCY_PRICE_REGEX = /[₹£€]\s?[0-9][\d.,]*/g;
 
