@@ -1,0 +1,150 @@
+name: Home Pricing Playwright Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      home_base_url:
+        description: 'Override Home Buy base URL (e.g. https://stage.example.com/home/buy/)'
+        required: false
+        default: 'https://www.ultrahuman.com/home/buy/'
+  schedule:
+    - cron: '0 1 * * *'
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
+      PW_TEST_HTML_REPORT_OPEN: never
+      PLAYWRIGHT_HTML_REPORT: playwright-report
+      HOME_BUY_BASE_URL: ${{ github.event.inputs.home_base_url || 'https://www.ultrahuman.com/home/buy/' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run Home Playwright suite
+        id: run_tests
+        continue-on-error: true
+        run: npx playwright test tests/home-pricing/home-buy-in.spec.ts --project=chromium --workers=2
+
+      - name: Parse Test Results
+        id: parse
+        if: always()
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const out = process.env.GITHUB_OUTPUT;
+          const p = process.env.PLAYWRIGHT_JSON_OUTPUT_NAME || 'test-results/results.json';
+
+          let passed = 0, failed = 0, skipped = 0, total = 0;
+
+          function countFromSuite(suite) {
+            if (suite.specs) {
+              for (const spec of suite.specs) {
+                for (const t of (spec.tests || [])) {
+                  total++;
+                  const last = (t.results && t.results.length) ? t.results[t.results.length - 1] : null;
+                  const status = (last && last.status) || t.outcome || t.status || 'unknown';
+                  if (status === 'passed') passed++;
+                  else if (status === 'failed' || status === 'timedOut') failed++;
+                  else skipped++;
+                }
+              }
+            }
+            if (suite.suites) suite.suites.forEach(countFromSuite);
+          }
+
+          if (fs.existsSync(p)) {
+            try {
+              const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+              if (data && data.stats) {
+                const stats = data.stats;
+                passed = Number(stats.expected || 0) + Number(stats.flaky || 0);
+                failed = Number(stats.unexpected || 0);
+                skipped = Number(stats.skipped || 0);
+                total = Number(stats.total || (passed + failed + skipped));
+              }
+              if (total === 0 && Array.isArray(data?.suites)) {
+                data.suites.forEach(countFromSuite);
+                total = passed + failed + skipped;
+              }
+            } catch (e) {
+              console.error(`Failed to parse ${p}:`, e);
+            }
+          } else {
+            console.warn(`Results file not found at ${p}`);
+          }
+          const anyFailed = failed > 0 ? 'true' : 'false';
+
+          fs.appendFileSync(out, `TESTS_PASSED=${passed}\n`);
+          fs.appendFileSync(out, `TESTS_FAILED_COUNT=${failed}\n`);
+          fs.appendFileSync(out, `TESTS_SKIPPED=${skipped}\n`);
+          fs.appendFileSync(out, `TESTS_TOTAL=${total}\n`);
+          fs.appendFileSync(out, `ANY_FAILED=${anyFailed}\n`);
+          NODE
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: home-playwright-report
+          path: playwright-report
+
+      - name: Build Slack payload
+        id: build_payload
+        if: always()
+        shell: bash
+        run: |
+          payload=$(node - <<'NODE'
+          const payload = {
+            text: `🏠 *Home Pricing Tests Summary*\n` +
+                  `• Base URL: ${process.env.HOME_BUY_BASE_URL}\n` +
+                  `• Branch: ${process.env.GITHUB_REF_NAME}\n` +
+                  `• By: ${process.env.GITHUB_ACTOR}\n\n` +
+                  `✅ Passed: ${process.env.TESTS_PASSED}\n` +
+                  `❌ Failed: ${process.env.TESTS_FAILED_COUNT}\n` +
+                  `⚪ Skipped: ${process.env.TESTS_SKIPPED}\n` +
+                  `📊 Total: ${process.env.TESTS_TOTAL}\n\n` +
+                  `🔗 <${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}|View Report>\n\n` +
+                  (process.env.ANY_FAILED === 'true' ? ':x: Some tests failed!' : ':white_check_mark: All tests passed!')
+          };
+          console.log(JSON.stringify(payload));
+          NODE
+          )
+          {
+            echo "payload<<EOF"
+            printf '%s\n' "$payload"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          TESTS_PASSED: ${{ steps.parse.outputs.TESTS_PASSED }}
+          TESTS_FAILED_COUNT: ${{ steps.parse.outputs.TESTS_FAILED_COUNT }}
+          TESTS_SKIPPED: ${{ steps.parse.outputs.TESTS_SKIPPED }}
+          TESTS_TOTAL: ${{ steps.parse.outputs.TESTS_TOTAL }}
+          ANY_FAILED: ${{ steps.parse.outputs.ANY_FAILED }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+
+      - name: Slack Notification
+        if: always()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: ${{ steps.build_payload.outputs.payload }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
