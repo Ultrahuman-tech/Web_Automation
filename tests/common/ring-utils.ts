@@ -13,11 +13,11 @@ export const SIZES = ['open', '5', '6', '7', '8', '9', '10', '11', '12', '13', '
 
 export const ADDON_PLANS = ['1', '2'];
 
-const BASE_RING_URL = process.env.RING_BASE_URL ?? 'https://ultrahuman.com/ring/buy/';
+const BASE_RING_URL = process.env.RING_BASE_URL ?? 'https://www.ultrahuman.com/ring/buy';
 const PRICE_REGEX =
-  /(?:₹|£|€|\$|AED|USD|SGD|AUD|INR)\s*[\d.,]+(?:\s*\(Tax incl\.\))?/gi;
+  /(?:MXN\s*\$|C\$|A\$|SAR|AED|USD|SGD|AUD|INR|₹|£|€|R|\$)\s*[\d.,]+(?:\s*\(Tax incl\.\))?/gi;
 
-const normalizePriceDigits = (text: string) => text.replace(/[^\d]/g, '');
+export const normalizePriceDigits = (text: string) => text.replace(/[^\d]/g, '');
 
 async function collectPricesFromLocator(locator: Locator): Promise<Set<string>> {
   const set = new Set<string>();
@@ -40,7 +40,7 @@ async function collectPricesFromLocator(locator: Locator): Promise<Set<string>> 
   return set;
 }
 
-async function collectProductPrices(page: Page): Promise<Set<string>> {
+export async function collectProductPrices(page: Page): Promise<Set<string>> {
   const result = new Set<string>();
   const sources: Locator[] = [
     page.locator('[data-testid*="price"]'),
