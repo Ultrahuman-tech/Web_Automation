@@ -15,6 +15,9 @@ const normalizeNewlines = (value: string) => value.replace(/\u00A0/g, ' ');
 const normalizeWhitespace = (value: string | null | undefined) =>
   (value ?? '').replace(/\s+/g, ' ').trim();
 
+const DEFAULT_PRICE_TOKEN_REGEX =
+  /(?:MXN\s*\$|C\$|A\$|AED|SAR|USD|₹|£|€|R|\$)\s*[\d][\d.,\s\u00A0]*/gi;
+
 const textContainsPrice = (text: string, price: string) => {
   const pattern = new RegExp(escapeRegExp(price).replace(/\s+/g, '\\s*'), 'i');
   return pattern.test(normalizeNewlines(text));
@@ -23,7 +26,137 @@ const textContainsPrice = (text: string, price: string) => {
 const sanitizeSearchTerm = (value: string | undefined) =>
   (value ?? '').replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
-const REGION_CONFIGS = [
+type RegionExpectedPrices = {
+  basePrice: string;
+  coverageOneYear: string;
+  coverageTwoYear: string;
+  orderSummary: string;
+  cartCoverage: string;
+  cartTotal: string;
+};
+
+type RegionConfig = {
+  name: string;
+  slug: string;
+  optionLabel: string;
+  optionLabels?: string[];
+  basePrice?: string;
+  coverageOneYear?: string;
+  coverageTwoYear?: string;
+  orderSummary?: string;
+  cartCoverage?: string;
+  cartTotal?: string;
+  currencyTokenRegex?: RegExp;
+};
+
+type ResolvedRegionConfig = Omit<RegionConfig, keyof RegionExpectedPrices> & RegionExpectedPrices;
+
+const PRICE_OVERRIDE_ENV = process.env.HOME_BUY_PRICE_OVERRIDES;
+let REGION_PRICE_OVERRIDES: Record<string, Partial<RegionExpectedPrices>> = {};
+if (PRICE_OVERRIDE_ENV) {
+  try {
+    REGION_PRICE_OVERRIDES = JSON.parse(PRICE_OVERRIDE_ENV);
+  } catch (error) {
+    console.warn(
+      `[home-buy-in] Unable to parse HOME_BUY_PRICE_OVERRIDES JSON: ${(error as Error).message}`
+    );
+  }
+}
+
+const resolveRegionConfig = (region: RegionConfig): ResolvedRegionConfig => {
+  const overrides = REGION_PRICE_OVERRIDES[region.slug] ?? {};
+  return {
+    ...region,
+    basePrice: overrides.basePrice ?? region.basePrice ?? '',
+    coverageOneYear: overrides.coverageOneYear ?? region.coverageOneYear ?? '',
+    coverageTwoYear: overrides.coverageTwoYear ?? region.coverageTwoYear ?? '',
+    orderSummary: overrides.orderSummary ?? region.orderSummary ?? '',
+    cartCoverage: overrides.cartCoverage ?? region.cartCoverage ?? '',
+    cartTotal: overrides.cartTotal ?? region.cartTotal ?? '',
+  };
+};
+
+const withGlobalFlag = (pattern: RegExp) =>
+  new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`);
+
+const parsePriceValue = (token: string): number => {
+  const numeric = normalizeNewlines(token).replace(/[^\d.,]/g, '').trim();
+  if (!numeric) return Number.NaN;
+
+  const hasDot = numeric.includes('.');
+  const hasComma = numeric.includes(',');
+
+  if (hasDot && hasComma) {
+    return Number.parseFloat(numeric.replace(/,/g, ''));
+  }
+
+  if (hasComma && !hasDot) {
+    if (/,\d{1,2}$/.test(numeric)) {
+      return Number.parseFloat(numeric.replace(/\./g, '').replace(/,/g, '.'));
+    }
+    return Number.parseFloat(numeric.replace(/,/g, ''));
+  }
+
+  if (hasDot && !hasComma) {
+    if (/\.\d{1,2}$/.test(numeric)) {
+      return Number.parseFloat(numeric.replace(/,/g, ''));
+    }
+    return Number.parseFloat(numeric.replace(/\./g, ''));
+  }
+
+  return Number.parseFloat(numeric);
+};
+
+type PriceToken = { token: string; value: number };
+
+const extractPriceTokens = (text: string, tokenPattern: RegExp): PriceToken[] => {
+  const normalized = normalizeWhitespace(normalizeNewlines(text));
+  const matches = [...normalized.matchAll(withGlobalFlag(tokenPattern))];
+  return matches
+    .map((match) => normalizeWhitespace(match[0]))
+    .filter(Boolean)
+    .map((token) => ({ token, value: parsePriceValue(token) }))
+    .filter((entry) => Number.isFinite(entry.value));
+};
+
+const pickToken = (tokens: PriceToken[], strategy: 'first' | 'max'): string => {
+  if (!tokens.length) return '';
+  if (strategy === 'first') return tokens[0].token;
+  return tokens.reduce((maxToken, nextToken) => (nextToken.value > maxToken.value ? nextToken : maxToken)).token;
+};
+
+const buildPriceRegex = (token: string) =>
+  new RegExp(escapeRegExp(token).replace(/\s+/g, '\\s*'), 'i');
+
+const captureTokenFromLocator = async (
+  locator: Locator,
+  tokenPattern: RegExp,
+  strategy: 'first' | 'max'
+): Promise<string> => {
+  const text = await locator.innerText().catch(() => '');
+  const tokens = extractPriceTokens(text, tokenPattern);
+  return pickToken(tokens, strategy);
+};
+
+const captureOrExpectPrice = async (
+  locator: Locator,
+  expectedText: string,
+  tokenPattern: RegExp,
+  strategy: 'first' | 'max',
+  context: string,
+  snapshotSection: Record<string, string>,
+  key: string
+) => {
+  if (expectedText.trim()) {
+    await expectAndCapture(locator, expectedText, context, snapshotSection, key);
+    return;
+  }
+  const token = await captureTokenFromLocator(locator, tokenPattern, strategy);
+  expect(token, `${context} token`).toBeTruthy();
+  snapshotSection[key] = token;
+};
+
+const REGION_CONFIGS: RegionConfig[] = [
   {
     name: 'India',
     slug: 'in',
@@ -96,9 +229,59 @@ const REGION_CONFIGS = [
     cartCoverage: 'A$89',
     cartTotal: 'A$938',
   },
+  {
+    name: 'Mexico',
+    slug: 'mx',
+    optionLabel: '🇲🇽Mexico',
+    optionLabels: ['🇲🇽 MX', 'Mexico'],
+    basePrice: 'MXN$9,189',
+    coverageOneYear: 'MXN$671',
+    coverageTwoYear: 'MXN$1,006',
+    orderSummary: 'MXN$10,195',
+    cartCoverage: 'MXN$1,006',
+    cartTotal: 'MXN$10,195',
+    currencyTokenRegex: /(?:MXN\s*\$|\$)\s*[\d][\d.,\s\u00A0]*/i,
+  },
+  {
+    name: 'Germany',
+    slug: 'de',
+    optionLabel: '🇩🇪Germany',
+    optionLabels: ['🇩🇪 DE', 'Germany', 'Deutschland'],
+    basePrice: '€364.77',
+    coverageOneYear: '€36',
+    coverageTwoYear: '€54',
+    orderSummary: '€418.77',
+    cartCoverage: '€54',
+    cartTotal: '€418.77',
+    currencyTokenRegex: /€\s*[\d][\d.,\s\u00A0]*/i,
+  },
+  {
+    name: 'Saudi Arabia',
+    slug: 'sa',
+    optionLabel: '🇸🇦Saudi Arabia',
+    optionLabels: ['🇸🇦 SA', 'Saudi Arabia', 'Saudi'],
+    basePrice: 'SAR 1,492.47',
+    coverageOneYear: 'SAR 155',
+    coverageTwoYear: 'SAR 199',
+    orderSummary: 'SAR 1,691.47',
+    cartCoverage: 'SAR 199',
+    cartTotal: 'SAR 1,691.47',
+    currencyTokenRegex: /SAR\s*[\d][\d.,\s\u00A0]*/i,
+  },
+  {
+    name: 'South Africa',
+    slug: 'za',
+    optionLabel: '🇿🇦South Africa',
+    optionLabels: ['🇿🇦 ZA', 'South Africa'],
+    basePrice: 'R8,999',
+    coverageOneYear: 'R749',
+    coverageTwoYear: 'R999',
+    orderSummary: 'R9,998',
+    cartCoverage: 'R999',
+    cartTotal: 'R9,998',
+    currencyTokenRegex: /R\s*[\d][\d.,\s\u00A0]*/i,
+  },
 ];
-
-type RegionConfig = (typeof REGION_CONFIGS)[number];
 
 type PriceSnapshot = {
   region: string;
@@ -126,7 +309,7 @@ type PriceSnapshot = {
   };
 };
 
-const createPriceSnapshot = (region: RegionConfig): PriceSnapshot => ({
+const createPriceSnapshot = (region: ResolvedRegionConfig): PriceSnapshot => ({
   region: region.name,
   slug: region.slug,
   expected: {
@@ -248,6 +431,15 @@ async function selectRegionOption(page: Page, region: RegionConfig): Promise<boo
 }
 
 async function ensureRegion(page: Page, region: RegionConfig, summaryLocator?: Locator) {
+  await expect(page, 'Region URL should include slug').toHaveURL(
+    new RegExp(`/${escapeRegExp(region.slug)}(?:/|\\?|$)`),
+    { timeout: ASSERT_TIMEOUT }
+  );
+
+  if (!region.basePrice?.trim()) {
+    return;
+  }
+
   const summary = summaryLocator ?? page.locator(ORDER_SUMMARY_SELECTOR);
   await summary.waitFor({ state: 'visible', timeout: ASSERT_TIMEOUT });
 
@@ -285,18 +477,24 @@ async function ensureRegion(page: Page, region: RegionConfig, summaryLocator?: L
   throw new Error(`Region ${region.name} pricing did not update to ${region.basePrice}`);
 }
 
-async function selectCoverageOptions(page: Page, coverageOneYear: string, coverageTwoYear: string) {
+async function selectCoverageOptions(page: Page, coverageOneYear?: string, coverageTwoYear?: string) {
+  const oneYearPattern = coverageOneYear?.trim()
+    ? new RegExp(`1 Year Coverage\\s*${escapeRegExp(coverageOneYear)}`, 'i')
+    : /1\s*Year\s*Coverage/i;
   const oneYearBtn = page
     .getByRole('button', {
-      name: new RegExp(`1 Year Coverage\\s*${escapeRegExp(coverageOneYear)}`, 'i'),
+      name: oneYearPattern,
     })
     .first();
   await expect(oneYearBtn).toBeVisible({ timeout: ASSERT_TIMEOUT });
   await oneYearBtn.click();
 
+  const twoYearPattern = coverageTwoYear?.trim()
+    ? new RegExp(`2 Year Coverage[\\s\\S]*${escapeRegExp(coverageTwoYear)}`, 'i')
+    : /2\s*Year\s*Coverage/i;
   const twoYearBtn = page
     .getByRole('button', {
-      name: new RegExp(`2 Year Coverage[\\s\\S]*${escapeRegExp(coverageTwoYear)}`, 'i'),
+      name: twoYearPattern,
     })
     .first();
   await expect(twoYearBtn).toBeVisible({ timeout: ASSERT_TIMEOUT });
@@ -414,10 +612,12 @@ test.describe.configure({ mode: 'parallel', timeout: 180000 });
 test.describe('Ultrahuman Home pricing with UHX coverage', () => {
   for (const region of REGION_CONFIGS) {
     test(`${region.name} pricing + cart validation`, async ({ page }, testInfo: TestInfo) => {
-      const priceSnapshot = createPriceSnapshot(region);
+      const resolvedRegion = resolveRegionConfig(region);
+      const priceSnapshot = createPriceSnapshot(resolvedRegion);
+      const tokenPattern = resolvedRegion.currencyTokenRegex ?? DEFAULT_PRICE_TOKEN_REGEX;
 
       await test.step('Navigate & prepare page', async () => {
-        await page.goto(`${HOME_BUY_BASE_URL}${region.slug}/`, {
+        await page.goto(`${HOME_BUY_BASE_URL}${resolvedRegion.slug}/`, {
           waitUntil: 'domcontentloaded',
           timeout: 60000,
         });
@@ -427,45 +627,64 @@ test.describe('Ultrahuman Home pricing with UHX coverage', () => {
 
       const orderSummaryCard = page.locator(ORDER_SUMMARY_SELECTOR);
       await orderSummaryCard.waitFor({ state: 'visible', timeout: ASSERT_TIMEOUT });
-      await ensureRegion(page, region, orderSummaryCard);
+      await ensureRegion(page, resolvedRegion, orderSummaryCard);
 
       await test.step('Validate pricing options', async () => {
-        await expectAndCapture(
+        await captureOrExpectPrice(
           orderSummaryCard,
-          region.basePrice,
-          `${region.name} base price`,
+          resolvedRegion.basePrice,
+          tokenPattern,
+          'max',
+          `${resolvedRegion.name} base price`,
           priceSnapshot.actual.pricingPage,
           'basePrice'
         );
 
         const { oneYearBtn, twoYearBtn } = await selectCoverageOptions(
           page,
-          region.coverageOneYear,
-          region.coverageTwoYear
+          resolvedRegion.coverageOneYear,
+          resolvedRegion.coverageTwoYear
         );
 
-        await expectAndCapture(
+        await captureOrExpectPrice(
           oneYearBtn,
-          region.coverageOneYear,
-          `${region.name} 1-year coverage`,
+          resolvedRegion.coverageOneYear,
+          tokenPattern,
+          'first',
+          `${resolvedRegion.name} 1-year coverage`,
           priceSnapshot.actual.pricingPage,
           'coverageOneYear'
         );
-        await expectAndCapture(
+        await captureOrExpectPrice(
           twoYearBtn,
-          region.coverageTwoYear,
-          `${region.name} 2-year coverage`,
+          resolvedRegion.coverageTwoYear,
+          tokenPattern,
+          'first',
+          `${resolvedRegion.name} 2-year coverage`,
           priceSnapshot.actual.pricingPage,
           'coverageTwoYear'
         );
 
-        await expectAndCapture(
+        await captureOrExpectPrice(
           orderSummaryCard,
-          region.orderSummary,
-          `${region.name} order summary`,
+          resolvedRegion.orderSummary,
+          tokenPattern,
+          'max',
+          `${resolvedRegion.name} order summary`,
           priceSnapshot.actual.pricingPage,
           'orderSummary'
         );
+
+        const baseValue = parsePriceValue(priceSnapshot.actual.pricingPage.basePrice);
+        const coverageValue = parsePriceValue(priceSnapshot.actual.pricingPage.coverageTwoYear);
+        const totalValue = parsePriceValue(priceSnapshot.actual.pricingPage.orderSummary);
+        if (Number.isFinite(baseValue) && Number.isFinite(coverageValue) && Number.isFinite(totalValue)) {
+          expect(totalValue, `${resolvedRegion.name} total should exceed base`).toBeGreaterThan(baseValue);
+          expect(
+            Math.abs(baseValue + coverageValue - totalValue),
+            `${resolvedRegion.name} total should equal base + 2-year coverage`
+          ).toBeLessThanOrEqual(0.5);
+        }
       });
 
       await test.step('Add to cart & verify totals', async () => {
@@ -473,38 +692,68 @@ test.describe('Ultrahuman Home pricing with UHX coverage', () => {
         await openCart(page);
 
         const cartList = page.getByTestId(CART_LIST_TEST_ID);
-        await expectAndCapture(
+        const cartBaseExpectation =
+          resolvedRegion.basePrice.trim() ? resolvedRegion.basePrice : priceSnapshot.actual.pricingPage.basePrice;
+        const cartCoverageExpectation =
+          resolvedRegion.cartCoverage.trim()
+            ? resolvedRegion.cartCoverage
+            : resolvedRegion.coverageTwoYear.trim()
+              ? resolvedRegion.coverageTwoYear
+              : priceSnapshot.actual.pricingPage.coverageTwoYear;
+
+        await captureOrExpectPrice(
           cartList,
-          region.basePrice,
-          `${region.name} cart base price`,
+          cartBaseExpectation,
+          tokenPattern,
+          'max',
+          `${resolvedRegion.name} cart base price`,
           priceSnapshot.actual.cart,
           'productPrice'
         );
-        await expectAndCapture(
-          cartList,
-          region.cartCoverage,
-          `${region.name} cart coverage price`,
-          priceSnapshot.actual.cart,
-          'coveragePrice'
-        );
+
+        if (cartCoverageExpectation.trim()) {
+          await expectAndCapture(
+            cartList,
+            cartCoverageExpectation,
+            `${resolvedRegion.name} cart coverage price`,
+            priceSnapshot.actual.cart,
+            'coveragePrice'
+          );
+        } else {
+          priceSnapshot.actual.cart.coveragePrice = await captureTokenFromLocator(cartList, tokenPattern, 'first');
+        }
 
         const cartSummary = page.getByTestId(CART_PANEL_TEST_ID);
-        await expectAndCapture(
+        const cartTotalExpectation =
+          resolvedRegion.cartTotal.trim()
+            ? resolvedRegion.cartTotal
+            : resolvedRegion.orderSummary.trim()
+              ? resolvedRegion.orderSummary
+              : priceSnapshot.actual.pricingPage.orderSummary;
+        await captureOrExpectPrice(
           cartSummary,
-          region.cartTotal,
-          `${region.name} cart total`,
+          cartTotalExpectation,
+          tokenPattern,
+          'max',
+          `${resolvedRegion.name} cart total`,
           priceSnapshot.actual.cart,
           'total'
         );
+
+        if (priceSnapshot.actual.pricingPage.orderSummary.trim()) {
+          await expect(cartSummary).toContainText(buildPriceRegex(priceSnapshot.actual.pricingPage.orderSummary), {
+            timeout: ASSERT_TIMEOUT,
+          });
+        }
 
         await closeCartIfVisible(page);
       });
 
       console.log(
-        `[${region.name}] Pricing snapshot`,
+        `[${resolvedRegion.name}] Pricing snapshot`,
         JSON.stringify(priceSnapshot, null, 2)
       );
-      await testInfo.attach(`${region.slug}-pricing`, {
+      await testInfo.attach(`${resolvedRegion.slug}-pricing`, {
         body: Buffer.from(JSON.stringify(priceSnapshot, null, 2)),
         contentType: 'application/json',
       });
