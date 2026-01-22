@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       blood_vision_base_url:
-        description: 'Override Blood Vision Buy base URL (e.g. https://stage.example.com/blood-vision/buy/in/)'
+        description: 'Override Blood Vision base URL (e.g. https://stage.example.com)'
         required: false
-        default: 'https://ultrahuman.com/blood-vision/buy/in/'
+        default: 'https://ultrahuman.com'
   schedule:
     - cron: '0 2 * * *'
 
@@ -17,7 +17,7 @@ jobs:
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
       PW_TEST_HTML_REPORT_OPEN: never
       PLAYWRIGHT_HTML_REPORT: playwright-report
-      BLOOD_VISION_BASE_URL: ${{ github.event.inputs.blood_vision_base_url || 'https:///ultrahuman.com/blood-vision/buy/in/' }}
+      BLOOD_VISION_BASE_URL: ${{ github.event.inputs.blood_vision_base_url || 'https://ultrahuman.com' }}
 
     steps:
       - name: Check out repository
