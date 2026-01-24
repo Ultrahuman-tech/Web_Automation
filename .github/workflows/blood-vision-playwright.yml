@@ -9,7 +9,7 @@ on:
         default: 'https://ultrahuman.com'
   schedule:
     # Runs at 9:00 AM IST (3:30 AM UTC) daily
-    - cron: '30 3 * * *'
+    - cron: '0 4 * * *'
 
 jobs:
   e2e:
@@ -93,8 +93,7 @@ jobs:
           fs.appendFileSync(out, `TESTS_PASSED=${passed}\n`);
           fs.appendFileSync(out, `TESTS_FAILED_COUNT=${failed}\n`);
           fs.appendFileSync(out, `TESTS_SKIPPED=${skipped}\n`);
-          fs.appendFileSync(out, `T
-          ESTS_TOTAL=${total}\n`);
+          fs.appendFileSync(out, `TESTS_TOTAL=${total}\n`);
           fs.appendFileSync(out, `ANY_FAILED=${anyFailed}\n`);
           NODE
 
