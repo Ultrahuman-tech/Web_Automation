@@ -1,14 +1,14 @@
-name: Blood Vision Playwright Tests
+name: Blood Vision CGM Playwright Tests
 
 on:
   workflow_dispatch:
     inputs:
-      blood_vision_base_url:
-        description: 'Override Blood Vision base URL (e.g. https://stage.example.com)'
+      base_url:
+        description: 'Override pricing base URL (e.g. https://stage.example.com/pricing/)'
         required: false
-        default: 'https://ultrahuman.com'
+        default: 'https://www.ultrahuman.com/'
   schedule:
-    - cron: '30 4 * * *'
+    - cron: '45 4 * * *'
 
 jobs:
   e2e:
@@ -17,7 +17,7 @@ jobs:
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
       PW_TEST_HTML_REPORT_OPEN: never
       PLAYWRIGHT_HTML_REPORT: playwright-report
-      BLOOD_VISION_BASE_URL: ${{ github.event.inputs.blood_vision_base_url || 'https://ultrahuman.com' }}
+      CGM_BASE_URL: ${{ github.event.inputs.base_url || 'https://www.ultrahuman.com/' }}
 
     steps:
       - name: Check out repository
@@ -34,50 +34,117 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Run Blood Vision Playwright suite
+      - name: Run CGM Playwright suite
         id: run_tests
         continue-on-error: true
-        run: npx playwright test tests/blood-vision/blood-vision-buy-in.spec.ts --project=chromium --workers=2
+        run: npx playwright test tests/cgm/CGM.spec.ts --project=chromium --workers=2
 
       - name: Parse Test Results
         id: parse
         if: always()
+        shell: bash
         run: |
-          if [ -f "$PLAYWRIGHT_JSON_OUTPUT_NAME" ]; then
-            PASSED=$(node -e "const d=require('./$PLAYWRIGHT_JSON_OUTPUT_NAME');console.log((d.stats?.expected||0)+(d.stats?.flaky||0))")
-            FAILED=$(node -e "const d=require('./$PLAYWRIGHT_JSON_OUTPUT_NAME');console.log(d.stats?.unexpected||0)")
-            SKIPPED=$(node -e "const d=require('./$PLAYWRIGHT_JSON_OUTPUT_NAME');console.log(d.stats?.skipped||0)")
-            TOTAL=$(node -e "const d=require('./$PLAYWRIGHT_JSON_OUTPUT_NAME');console.log(d.stats?.total||0)")
-          else
-            PASSED=0
-            FAILED=0
-            SKIPPED=0
-            TOTAL=0
-          fi
-          echo "TESTS_PASSED=$PASSED" >> $GITHUB_OUTPUT
-          echo "TESTS_FAILED_COUNT=$FAILED" >> $GITHUB_OUTPUT
-          echo "TESTS_SKIPPED=$SKIPPED" >> $GITHUB_OUTPUT
-          echo "TESTS_TOTAL=$TOTAL" >> $GITHUB_OUTPUT
-          if [ "$FAILED" -gt 0 ]; then
-            echo "ANY_FAILED=true" >> $GITHUB_OUTPUT
-          else
-            echo "ANY_FAILED=false" >> $GITHUB_OUTPUT
-          fi
+          node - <<'NODE'
+          const fs = require('fs');
+          const out = process.env.GITHUB_OUTPUT;
+          const p = process.env.PLAYWRIGHT_JSON_OUTPUT_NAME || 'test-results/results.json';
+
+          let passed = 0, failed = 0, skipped = 0, total = 0;
+
+          function countFromSuite(suite) {
+            if (suite.specs) {
+              for (const spec of suite.specs) {
+                for (const t of (spec.tests || [])) {
+                  total++;
+                  const last = (t.results && t.results.length) ? t.results[t.results.length - 1] : null;
+                  const status = (last && last.status) || t.outcome || t.status || 'unknown';
+                  if (status === 'passed') passed++;
+                  else if (status === 'failed' || status === 'timedOut') failed++;
+                  else skipped++;
+                }
+              }
+            }
+            if (suite.suites) suite.suites.forEach(countFromSuite);
+          }
+
+          if (fs.existsSync(p)) {
+            try {
+              const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+              if (data && data.stats) {
+                const stats = data.stats;
+                passed = Number(stats.expected || 0) + Number(stats.flaky || 0);
+                failed = Number(stats.unexpected || 0);
+                skipped = Number(stats.skipped || 0);
+                total = Number(stats.total || (passed + failed + skipped));
+              }
+              if (total === 0 && Array.isArray(data?.suites)) {
+                data.suites.forEach(countFromSuite);
+                total = passed + failed + skipped;
+              }
+            } catch (e) {
+              console.error(`Failed to parse ${p}:`, e);
+            }
+          } else {
+            console.warn(`Results file not found at ${p}`);
+          }
+          const anyFailed = failed > 0 ? 'true' : 'false';
+
+          fs.appendFileSync(out, `TESTS_PASSED=${passed}\n`);
+          fs.appendFileSync(out, `TESTS_FAILED_COUNT=${failed}\n`);
+          fs.appendFileSync(out, `TESTS_SKIPPED=${skipped}\n`);
+          fs.appendFileSync(out, `TESTS_TOTAL=${total}\n`);
+          fs.appendFileSync(out, `ANY_FAILED=${anyFailed}\n`);
+          NODE
 
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: blood-vision-playwright-report
+          name: cgm-playwright-report
           path: playwright-report
 
-      - name: Send Slack Notification
+      - name: Build Slack payload
+        id: build_payload
+        if: always()
+        shell: bash
+        run: |
+          payload=$(node - <<'NODE'
+          const payload = {
+            text: `🧪 *CGM Tests Summary*\n` +
+                  `• Base URL: ${process.env.CGM_BASE_URL}\n` +
+                  `• Branch: ${process.env.GITHUB_REF_NAME}\n` +
+                  `• By: ${process.env.GITHUB_ACTOR}\n\n` +
+                  `✅ Passed: ${process.env.TESTS_PASSED}\n` +
+                  `❌ Failed: ${process.env.TESTS_FAILED_COUNT}\n` +
+                  `⚪ Skipped: ${process.env.TESTS_SKIPPED}\n` +
+                  `📊 Total: ${process.env.TESTS_TOTAL}\n\n` +
+                  `🔗 <${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}|View Report>\n\n` +
+                  (process.env.ANY_FAILED === 'true' ? ':x: Some tests failed!' : ':white_check_mark: All tests passed!')
+          };
+          console.log(JSON.stringify(payload));
+          NODE
+          )
+          {
+            echo "payload<<EOF"
+            printf '%s\n' "$payload"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          TESTS_PASSED: ${{ steps.parse.outputs.TESTS_PASSED }}
+          TESTS_FAILED_COUNT: ${{ steps.parse.outputs.TESTS_FAILED_COUNT }}
+          TESTS_SKIPPED: ${{ steps.parse.outputs.TESTS_SKIPPED }}
+          TESTS_TOTAL: ${{ steps.parse.outputs.TESTS_TOTAL }}
+          ANY_FAILED: ${{ steps.parse.outputs.ANY_FAILED }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+
+      - name: Slack Notification
         if: always()
         uses: slackapi/slack-github-action@v1.24.0
         with:
-          payload: |
-            {
-              "text": "🩸 *Blood Vision Tests Summary*\n• Base URL: ${{ env.BLOOD_VISION_BASE_URL }}\n• Branch: ${{ github.ref_name }}\n• By: ${{ github.actor }}\n\n✅ Passed: ${{ steps.parse.outputs.TESTS_PASSED }}\n❌ Failed: ${{ steps.parse.outputs.TESTS_FAILED_COUNT }}\n⚪ Skipped: ${{ steps.parse.outputs.TESTS_SKIPPED }}\n📊 Total: ${{ steps.parse.outputs.TESTS_TOTAL }}\n\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Report>\n\n${{ steps.parse.outputs.ANY_FAILED == 'true' && ':x: Some tests failed!' || ':white_check_mark: All tests passed!' }}"
-            }
+          payload: ${{ steps.build_payload.outputs.payload }}
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
