@@ -8,7 +8,7 @@ on:
         required: false
         default: 'https://www.ultrahuman.com/'
   schedule:
-    - cron: '0 5 * * *'
+    - cron: '30 5 * * *' # 11:00 IST (05:30 UTC)
 
 jobs:
   e2e:
