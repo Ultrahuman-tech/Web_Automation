@@ -1,4 +1,4 @@
-name: Blood Vision CGM Playwright Tests
+name: Blood Vision Playwright Tests
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         required: false
         default: 'https://www.ultrahuman.com/'
   schedule:
-    - cron: '45 4 * * *'
+    - cron: '0 5 * * *'
 
 jobs:
   e2e:
@@ -17,7 +17,7 @@ jobs:
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
       PW_TEST_HTML_REPORT_OPEN: never
       PLAYWRIGHT_HTML_REPORT: playwright-report
-      CGM_BASE_URL: ${{ github.event.inputs.base_url || 'https://www.ultrahuman.com/' }}
+      BLOODVISION_BASE_URL: ${{ github.event.inputs.base_url || 'https://www.ultrahuman.com/' }}
 
     steps:
       - name: Check out repository
@@ -34,10 +34,10 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Run CGM Playwright suite
+      - name: Run Blood Vision Playwright suite
         id: run_tests
         continue-on-error: true
-        run: npx playwright test tests/cgm/CGM.spec.ts --project=chromium --workers=2
+        run: npx playwright test tests/blood-vision/blood-vision-buy-in.spec.ts --project=chromium --workers=4
 
       - name: Parse Test Results
         id: parse
@@ -100,7 +100,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cgm-playwright-report
+          name: bloodvision-playwright-report
           path: playwright-report
 
       - name: Build Slack payload
@@ -110,8 +110,8 @@ jobs:
         run: |
           payload=$(node - <<'NODE'
           const payload = {
-            text: `🧪 *CGM Tests Summary*\n` +
-                  `• Base URL: ${process.env.CGM_BASE_URL}\n` +
+            text: `🩸 *Blood Vision Tests Summary*\n` +
+                  `• Base URL: ${process.env.BLOODVISION_BASE_URL}\n` +
                   `• Branch: ${process.env.GITHUB_REF_NAME}\n` +
                   `• By: ${process.env.GITHUB_ACTOR}\n\n` +
                   `✅ Passed: ${process.env.TESTS_PASSED}\n` +
