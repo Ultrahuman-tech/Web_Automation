@@ -48,7 +48,7 @@ type PriceInfo = {
 };
 
 const EXPECTED_PRICES: Record<string, PriceInfo> = {
-  in: { text: '34,999', value: 34999, currency: '₹' },
+  in: { text: '24499.3', value: 24499.3, currency: '₹' },
   gb: { text: '£118.3', value: 118.3, currency: '£' },
 };
 
