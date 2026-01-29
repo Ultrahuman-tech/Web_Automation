@@ -58,7 +58,7 @@ const DEFAULT_EXPECTED_PRICE: PriceInfo = { text: '€132.3', value: 132.3, curr
 const UHX_PRICES: Record<string, number> = {
   '€': 36,
   '£': 36,
-  '₹': 0, // No UHX for India
+  '₹': 2988, // No UHX for India
 };
 
 const CURRENCY_PRICE_REGEX = /[₹£€]\s?[0-9][\d.,]*/g;
