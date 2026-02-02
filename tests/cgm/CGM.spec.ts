@@ -39,8 +39,16 @@ const REGION_CONFIGS: RegionConfig[] = [
   { name: 'Cyprus', slug: 'cy', useSelector: true, planText: /4 weeks/i },
 ];
 
+// Helper to ensure URL has protocol
+const ensureProtocol = (url: string): string => {
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return `https://${url}`;
+  }
+  return url;
+};
+
 // Support both full pricing URL or just base domain
-const CGM_BASE_URL = process.env.CGM_BASE_URL ?? 'https://ultrahuman.com/pricing/';
+const CGM_BASE_URL = ensureProtocol(process.env.CGM_BASE_URL ?? 'https://ultrahuman.com/pricing/');
 const BASE_PRICING_URL = CGM_BASE_URL.includes('/pricing')
   ? CGM_BASE_URL.replace(/\/?$/, '/') // Ensure trailing slash
   : `${CGM_BASE_URL.replace(/\/?$/, '')}/pricing/`; // Add /pricing/ if not present

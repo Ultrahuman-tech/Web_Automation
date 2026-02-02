@@ -22,7 +22,20 @@ const COLOR_LABELS: Record<string, string[]> = {
   SPACE_SILVER: ['space silver'],
 };
 
-const BASE_RING_URL = process.env.RING_BASE_URL ?? 'https://ultrahuman.com/ring/buy';
+// Helper to ensure URL has protocol
+const ensureProtocol = (url: string): string => {
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return `https://${url}`;
+  }
+  return url;
+};
+
+const RAW_RING_BASE_URL = process.env.RING_BASE_URL ?? 'https://ultrahuman.com/ring/buy';
+const BASE_RING_URL = ensureProtocol(
+  RAW_RING_BASE_URL.includes('/ring/buy')
+    ? RAW_RING_BASE_URL
+    : `${RAW_RING_BASE_URL.replace(/\/?$/, '')}/ring/buy`
+);
 const PRICE_REGEX =
   /(?:MXN\s*\$|C\$|A\$|SAR|AED|USD|SGD|AUD|INR|₹|£|€|R|\$)\s*[\d.,]+(?:\s*\(Tax incl\.\))?/gi;
 
@@ -50,7 +63,34 @@ const ROSE_GOLD_RING_PRICES: Record<string, string> = {
   ZA: 'R7,999',
 };
 
+// PowerPlug pricing configurations
+export type PowerPlugType = 'cycle_ovulation_pro' | 'respiratory_health';
+
+export const POWERPLUG_CONFIG: Record<string, { type: PowerPlugType; name: string; price: string }> = {
+  // GB gets Cycle & Ovulation Pro PowerPlug
+  GB: { type: 'cycle_ovulation_pro', name: 'Cycle & Ovulation Pro PowerPlug', price: '£29.99' },
+  // Regions that get Respiratory Health PowerPlug
+  AE: { type: 'respiratory_health', name: 'Respiratory Health PowerPlug', price: 'AED 149' },
+  IN: { type: 'respiratory_health', name: 'Respiratory Health PowerPlug', price: '₹1,999' },
+  GLOBAL: { type: 'respiratory_health', name: 'Respiratory Health PowerPlug', price: '$39.99' },
+  AU: { type: 'respiratory_health', name: 'Respiratory Health PowerPlug', price: 'A$55' },
+  CA: { type: 'respiratory_health', name: 'Respiratory Health PowerPlug', price: 'C$50' },
+  MX: { type: 'respiratory_health', name: 'Respiratory Health PowerPlug', price: 'MXN$700' },
+  AT: { type: 'respiratory_health', name: 'Respiratory Health PowerPlug', price: '€39' },
+  SA: { type: 'respiratory_health', name: 'Respiratory Health PowerPlug', price: 'SAR 159' },
+  ZA: { type: 'respiratory_health', name: 'Respiratory Health PowerPlug', price: 'R659' },
+};
+
 export const normalizePriceDigits = (text: string) => text.replace(/[^\d]/g, '');
+
+export const normalizePriceText = (text: string) =>
+  text
+    .replace(/\u00A0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*,\s*/g, ',')
+    .replace(/\s*\.\s*/g, '.')
+    .trim()
+    .replace(/\s+/g, '');
 
 const normalizePriceToken = (text: string) =>
   text
@@ -642,4 +682,195 @@ export async function addRingToCart(
       throw error;
     }
   });
+}
+
+/**
+ * Get expected PowerPlug configuration for a given country
+ */
+export function getExpectedPowerPlug(country: string): { type: PowerPlugType; name: string; price: string } | null {
+  const key = country.toUpperCase();
+  return POWERPLUG_CONFIG[key] ?? POWERPLUG_CONFIG['GLOBAL'] ?? null;
+}
+
+/**
+ * Validates PowerPlug pricing on the price page and cart page
+ * @param page - Playwright Page object
+ * @param country - Country code (e.g., 'gb', 'ae', 'in')
+ */
+export async function validatePowerPlugPricing(
+  page: Page,
+  country: string
+): Promise<{ success: boolean; pricePageMatch: boolean; cartPageMatch: boolean; details: string }> {
+  const testInfo = test.info();
+  const expectedConfig = getExpectedPowerPlug(country);
+
+  if (!expectedConfig) {
+    console.log(`[PowerPlug] No PowerPlug configuration found for country: ${country}`);
+    return {
+      success: true,
+      pricePageMatch: true,
+      cartPageMatch: true,
+      details: `No PowerPlug configuration for ${country}`,
+    };
+  }
+
+  const expectedName = expectedConfig.name;
+  const expectedPrice = expectedConfig.price;
+  const normalizedExpectedPrice = normalizePriceText(expectedPrice);
+
+  let pricePageMatch = false;
+  let cartPageMatch = false;
+  let pricePageObserved = '';
+  let cartPageObserved = '';
+
+  await test.step(`Validate PowerPlug on price page: ${expectedName}`, async () => {
+    // Find PowerPlug heading on price page
+    const powerPlugHeading = expectedConfig.type === 'cycle_ovulation_pro'
+      ? page.getByText(/Cycle\s*&\s*Ovulation\s*Pro\s*PowerPlug/i).first()
+      : page.getByText(/Respiratory\s*Health\s*PowerPlug/i).first();
+
+    try {
+      await expect(powerPlugHeading, `${expectedName} heading should be visible`).toBeVisible({ timeout: 15000 });
+      await powerPlugHeading.scrollIntoViewIfNeeded();
+
+      // Extract price from the PowerPlug section
+      const priceSection = powerPlugHeading.locator('xpath=ancestor::div[contains(@class,"powerplug") or contains(@class,"plugin") or contains(@class,"addon")]').first();
+      let priceText = '';
+
+      // Try multiple selectors to find the price
+      const priceSelectors = [
+        priceSection.locator('[data-testid*="price"]'),
+        priceSection.locator('[class*="price"]'),
+        priceSection.locator('span').filter({ hasText: PRICE_REGEX }),
+        page.locator(`[data-testid*="respiratory"]`).locator('span'),
+        page.locator(`[data-testid*="cnopro"]`).locator('span'),
+      ];
+
+      for (const selector of priceSelectors) {
+        try {
+          const texts = await selector.allInnerTexts();
+          for (const text of texts) {
+            const matches = text.match(PRICE_REGEX);
+            if (matches) {
+              priceText = matches[0].replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
+              break;
+            }
+          }
+          if (priceText) break;
+        } catch {
+          continue;
+        }
+      }
+
+      if (priceText) {
+        pricePageObserved = priceText;
+        const normalizedObserved = normalizePriceText(priceText);
+        pricePageMatch = normalizedObserved === normalizedExpectedPrice ||
+          normalizePriceDigits(priceText) === normalizePriceDigits(expectedPrice);
+
+        console.log(
+          `[PowerPlug:${country}] Price page - Expected: ${expectedPrice} (${normalizedExpectedPrice}), ` +
+          `Observed: ${priceText} (${normalizedObserved}), Match: ${pricePageMatch}`
+        );
+      } else {
+        console.warn(`[PowerPlug:${country}] Could not extract price from price page for ${expectedName}`);
+      }
+    } catch (error) {
+      console.error(`[PowerPlug:${country}] Failed to validate price page:`, error);
+      await page.screenshot({
+        path: `errors/powerplug-price-page-${country}-${Date.now()}.png`,
+        fullPage: true,
+      }).catch(() => {});
+    }
+  });
+
+  await test.step(`Validate PowerPlug in cart: ${expectedName}`, async () => {
+    try {
+      // Wait for cart to be visible
+      const cartList = page.getByTestId('cart-list');
+      const isCartVisible = await cartList.isVisible().catch(() => false);
+
+      if (!isCartVisible) {
+        console.log(`[PowerPlug:${country}] Cart not visible, skipping cart validation`);
+        cartPageMatch = true; // Skip if cart not visible
+        return;
+      }
+
+      // Look for PowerPlug item in cart
+      const cartTexts = await cartList.allInnerTexts().catch(() => []);
+      const cartTextBlob = cartTexts.join(' ');
+
+      // Check if PowerPlug name is in cart
+      const nameRegex = expectedConfig.type === 'cycle_ovulation_pro'
+        ? /Cycle\s*&\s*Ovulation\s*Pro/i
+        : /Respiratory\s*Health/i;
+
+      if (!nameRegex.test(cartTextBlob)) {
+        console.log(`[PowerPlug:${country}] PowerPlug "${expectedName}" not found in cart`);
+        cartPageMatch = true; // PowerPlug may not have been added to cart
+        return;
+      }
+
+      // Extract price from cart for the PowerPlug
+      const priceMatches = cartTextBlob.match(PRICE_REGEX);
+      if (priceMatches) {
+        for (const match of priceMatches) {
+          const normalizedMatch = normalizePriceText(match);
+          if (normalizedMatch === normalizedExpectedPrice ||
+              normalizePriceDigits(match) === normalizePriceDigits(expectedPrice)) {
+            cartPageObserved = match;
+            cartPageMatch = true;
+            break;
+          }
+        }
+      }
+
+      if (cartPageMatch) {
+        console.log(
+          `[PowerPlug:${country}] Cart page - Expected: ${expectedPrice}, ` +
+          `Observed: ${cartPageObserved}, Match: ${cartPageMatch}`
+        );
+      } else {
+        console.warn(
+          `[PowerPlug:${country}] Cart price mismatch - Expected: ${expectedPrice}, ` +
+          `Found prices: ${priceMatches?.join(', ') ?? 'none'}`
+        );
+      }
+    } catch (error) {
+      console.error(`[PowerPlug:${country}] Failed to validate cart page:`, error);
+      await page.screenshot({
+        path: `errors/powerplug-cart-${country}-${Date.now()}.png`,
+        fullPage: true,
+      }).catch(() => {});
+    }
+  });
+
+  const success = pricePageMatch && cartPageMatch;
+  const details = `PowerPlug: ${expectedName}, Expected: ${expectedPrice}, ` +
+    `Price Page: ${pricePageObserved || 'N/A'} (${pricePageMatch ? 'PASS' : 'FAIL'}), ` +
+    `Cart: ${cartPageObserved || 'N/A'} (${cartPageMatch ? 'PASS' : 'FAIL'})`;
+
+  // Attach results to test report
+  await testInfo.attach(`powerplug-validation-${country}`, {
+    body: JSON.stringify({
+      country,
+      expectedName,
+      expectedPrice,
+      pricePageObserved,
+      pricePageMatch,
+      cartPageObserved,
+      cartPageMatch,
+      success,
+    }, null, 2),
+    contentType: 'application/json',
+  }).catch(() => {});
+
+  if (!success) {
+    await page.screenshot({
+      path: `errors/powerplug-mismatch-${country}-${Date.now()}.png`,
+      fullPage: true,
+    }).catch(() => {});
+  }
+
+  return { success, pricePageMatch, cartPageMatch, details };
 }

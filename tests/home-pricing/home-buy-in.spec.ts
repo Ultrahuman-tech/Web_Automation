@@ -1,7 +1,19 @@
 import { test, expect, Page, Locator, TestInfo } from '@playwright/test';
 
-const HOME_BUY_BASE_URL =
-  process.env.HOME_BUY_BASE_URL ?? 'https://www.ultrahuman.com/home/buy/';
+// Helper to ensure URL has protocol
+const ensureProtocol = (url: string): string => {
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return `https://${url}`;
+  }
+  return url;
+};
+
+const RAW_HOME_BUY_URL = process.env.HOME_BUY_BASE_URL ?? 'https://www.ultrahuman.com/home/buy/';
+const HOME_BUY_BASE_URL = ensureProtocol(
+  RAW_HOME_BUY_URL.includes('/home/buy')
+    ? RAW_HOME_BUY_URL.replace(/\/?$/, '/')
+    : `${RAW_HOME_BUY_URL.replace(/\/?$/, '')}/home/buy/`
+);
 
 const ORDER_SUMMARY_SELECTOR = '#order-summary-card';
 const CART_LIST_TEST_ID = 'cart-list';
