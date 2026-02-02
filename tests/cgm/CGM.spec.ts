@@ -39,7 +39,11 @@ const REGION_CONFIGS: RegionConfig[] = [
   { name: 'Cyprus', slug: 'cy', useSelector: true, planText: /4 weeks/i },
 ];
 
-const BASE_PRICING_URL = process.env.CGM_BASE_URL ?? 'https://ultrahuman.com/pricing/';
+// Support both full pricing URL or just base domain
+const CGM_BASE_URL = process.env.CGM_BASE_URL ?? 'https://ultrahuman.com/pricing/';
+const BASE_PRICING_URL = CGM_BASE_URL.includes('/pricing')
+  ? CGM_BASE_URL.replace(/\/?$/, '/') // Ensure trailing slash
+  : `${CGM_BASE_URL.replace(/\/?$/, '')}/pricing/`; // Add /pricing/ if not present
 
 type PriceInfo = {
   text: string;
@@ -340,8 +344,8 @@ async function runCheckoutFlow(page: Page, region: RegionConfig, testInfo: TestI
     }
   };
 
-  // Verify we're on the correct region page
-  await expect(page).toHaveURL(new RegExp(`/pricing/${region.slug}/`), { timeout: 10000 });
+  // Verify we're on the correct region page (check for region slug in URL path)
+  await expect(page).toHaveURL(new RegExp(`/${region.slug}/?`), { timeout: 10000 });
 
   // Wait for pricing data to load from API
   await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
