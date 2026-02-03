@@ -48,7 +48,7 @@ const ensureProtocol = (url: string): string => {
 };
 
 // Support both full pricing URL or just base domain
-const CGM_BASE_URL = ensureProtocol(process.env.CGM_BASE_URL ?? 'https://website-production-git-refactor-remove-named-paths-ultrahuman.vercel.app/pricing/');
+const CGM_BASE_URL = ensureProtocol(process.env.CGM_BASE_URL ?? 'https://ultrahuman.com/pricing/');
 const BASE_PRICING_URL = CGM_BASE_URL.includes('/pricing')
   ? CGM_BASE_URL.replace(/\/?$/, '/') // Ensure trailing slash
   : `${CGM_BASE_URL.replace(/\/?$/, '')}/pricing/`; // Add /pricing/ if not present
