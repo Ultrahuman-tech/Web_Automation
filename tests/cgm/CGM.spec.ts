@@ -48,7 +48,7 @@ const ensureProtocol = (url: string): string => {
 };
 
 // Support both full pricing URL or just base domain
-const CGM_BASE_URL = ensureProtocol(process.env.CGM_BASE_URL ?? 'https://ultrahuman.com/pricing/');
+const CGM_BASE_URL = ensureProtocol(process.env.CGM_BASE_URL ?? 'https://website-production-git-refactor-remove-named-paths-ultrahuman.vercel.app/pricing/');
 const BASE_PRICING_URL = CGM_BASE_URL.includes('/pricing')
   ? CGM_BASE_URL.replace(/\/?$/, '/') // Ensure trailing slash
   : `${CGM_BASE_URL.replace(/\/?$/, '')}/pricing/`; // Add /pricing/ if not present
@@ -60,17 +60,17 @@ type PriceInfo = {
 };
 
 const EXPECTED_PRICES: Record<string, PriceInfo> = {
-  in: { text: '₹24,499.3', value: 24499.3, currency: '₹' },
-  gb: { text: '£118.3', value: 118.3, currency: '£' },
+  in: { text: '₹34,999', value: 34999, currency: '₹' },
+  gb: { text: '£169', value: 169, currency: '£' },
 };
 
-const DEFAULT_EXPECTED_PRICE: PriceInfo = { text: '€132.3', value: 132.3, currency: '€' };
+const DEFAULT_EXPECTED_PRICE: PriceInfo = { text: '€189', value: 189, currency: '€' };
 
 // UltrahumanX - 1 year subscription prices by currency
 const UHX_PRICES: Record<string, number> = {
-  '€': 36,
-  '£': 36,
-  '₹': 2988, // No UHX for India
+  '€': 0,
+  '£': 0,
+  '₹': 0, // No UHX for India
 };
 
 const CURRENCY_PRICE_REGEX = /[₹£€]\s?[0-9][\d.,]*/g;
