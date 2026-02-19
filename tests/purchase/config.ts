@@ -18,8 +18,8 @@ export const ENVIRONMENTS = {
     description: 'Production environment'
   },
   staging: {
-    BASE_URL: 'https://website-production-git-localization-ssr-ultrahuman.vercel.app',
-    description: 'Staging environment'
+    BASE_URL: 'https://www.ultrahuman.com',
+    description: 'Staging environment (region-prefix refactor)'
   },
   development: {
     BASE_URL: 'https://dev.ultrahuman.com',
@@ -44,8 +44,8 @@ export const PURCHASE_CONFIG = {
   DEFAULT_LANGUAGE: 'en',
   SUPPORTED_LANGUAGES: ['en', 'ja', 'de', 'th'] as const,
   
-  // Country settings
-  SUPPORTED_COUNTRIES: ['in', 'us', 'ae', 'at', 'global'] as const,
+  // Country/region settings (new region-prefix format; 'global' maps to 'us')
+  SUPPORTED_COUNTRIES: ['in', 'us', 'ae', 'at', 'au', 'ca', 'gb', 'mx', 'sa', 'za', 'de', 'jp'] as const,
   
   // Test data
   TEST_USER: {
@@ -75,38 +75,50 @@ export const PURCHASE_CONFIG = {
 } as const;
 
 // Dynamic purchase flow URLs based on environment
+// NEW FORMAT: /{region}/ring/buy/  (region prefix at start of path)
+// Language is no longer a URL path prefix — all languages share the same region URL.
+const _base = PURCHASE_CONFIG.BASE_URL.replace(/\/+$/, '');
+
 export const PURCHASE_URLS = {
-  // English purchase URLs for different countries
+  // English purchase URLs — region prefix format
   en: {
-    in: `${PURCHASE_CONFIG.BASE_URL}/ring/buy/in/`,
-    us: `${PURCHASE_CONFIG.BASE_URL}/ring/buy/us/`,
-    ae: `${PURCHASE_CONFIG.BASE_URL}/ring/buy/ae/`,
-    at: `${PURCHASE_CONFIG.BASE_URL}/ring/buy/at/`,
-    global: `${PURCHASE_CONFIG.BASE_URL}/ring/buy/global/`
+    in: `${_base}/in/ring/buy/`,
+    us: `${_base}/us/ring/buy/`,
+    ae: `${_base}/ae/ring/buy/`,
+    at: `${_base}/at/ring/buy/`,
+    au: `${_base}/au/ring/buy/`,
+    ca: `${_base}/ca/ring/buy/`,
+    gb: `${_base}/gb/ring/buy/`,
+    mx: `${_base}/mx/ring/buy/`,
+    sa: `${_base}/sa/ring/buy/`,
+    za: `${_base}/za/ring/buy/`,
+    de: `${_base}/de/ring/buy/`,
+    jp: `${_base}/jp/ring/buy/`,
   },
-  // Japanese purchase URLs
+  // Japanese — same region URLs (language handled by app, not URL path)
   ja: {
-    in: `${PURCHASE_CONFIG.BASE_URL}/ja/ring/buy/in/`,
-    us: `${PURCHASE_CONFIG.BASE_URL}/ja/ring/buy/us/`,
-    ae: `${PURCHASE_CONFIG.BASE_URL}/ja/ring/buy/ae/`,
-    at: `${PURCHASE_CONFIG.BASE_URL}/ja/ring/buy/at/`,
-    global: `${PURCHASE_CONFIG.BASE_URL}/ja/ring/buy/global/`
+    in: `${_base}/in/ring/buy/`,
+    us: `${_base}/us/ring/buy/`,
+    ae: `${_base}/ae/ring/buy/`,
+    at: `${_base}/at/ring/buy/`,
+    jp: `${_base}/jp/ring/buy/`,
   },
-  // German purchase URLs
+  // German — same region URLs
   de: {
-    in: `${PURCHASE_CONFIG.BASE_URL}/de/ring/buy/in/`,
-    us: `${PURCHASE_CONFIG.BASE_URL}/de/ring/buy/us/`,
-    ae: `${PURCHASE_CONFIG.BASE_URL}/de/ring/buy/ae/`,
-    at: `${PURCHASE_CONFIG.BASE_URL}/de/ring/buy/at/`,
-    global: `${PURCHASE_CONFIG.BASE_URL}/de/ring/buy/global/`
+    in: `${_base}/in/ring/buy/`,
+    us: `${_base}/us/ring/buy/`,
+    ae: `${_base}/ae/ring/buy/`,
+    at: `${_base}/at/ring/buy/`,
+    de: `${_base}/de/ring/buy/`,
+    'de-en': `${_base}/de-en/ring/buy/`,
   },
-  // Thai purchase URLs
+  // Thai — same region URLs
   th: {
-    in: `${PURCHASE_CONFIG.BASE_URL}/th/ring/buy/in/`,
-    us: `${PURCHASE_CONFIG.BASE_URL}/th/ring/buy/us/`,
-    ae: `${PURCHASE_CONFIG.BASE_URL}/th/ring/buy/ae/`,
-    at: `${PURCHASE_CONFIG.BASE_URL}/th/ring/buy/at/`,
-    global: `${PURCHASE_CONFIG.BASE_URL}/th/ring/buy/global/`
+    in: `${_base}/in/ring/buy/`,
+    us: `${_base}/us/ring/buy/`,
+    ae: `${_base}/ae/ring/buy/`,
+    at: `${_base}/at/ring/buy/`,
+    th: `${_base}/th/ring/buy/`,
   }
 } as const;
 
@@ -133,12 +145,14 @@ export function isCountrySupported(country: string): boolean {
 
 // Purchase URL helper functions
 export function getPurchaseUrl(language: string, country: string): string {
+  // Map legacy 'global' to 'us'
+  const region = country === 'global' ? 'us' : country;
   const langUrls = PURCHASE_URLS[language as keyof typeof PURCHASE_URLS];
   if (!langUrls) {
     console.warn(`Language ${language} not supported, falling back to English`);
-    return PURCHASE_URLS.en[country as keyof typeof PURCHASE_URLS.en] || PURCHASE_URLS.en.in;
+    return PURCHASE_URLS.en[region as keyof typeof PURCHASE_URLS.en] || PURCHASE_URLS.en.in;
   }
-  return langUrls[country as keyof typeof langUrls] || langUrls.in;
+  return langUrls[region as keyof typeof langUrls] || PURCHASE_URLS.en[region as keyof typeof PURCHASE_URLS.en] || langUrls.in;
 }
 
 // Environment management functions

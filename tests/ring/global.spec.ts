@@ -1,2 +1,3 @@
 import { generateTestsForCountry } from '../common/generateTests';
-generateTestsForCountry('global');
+// 'global' now maps to 'us' in the new region-prefix URL format
+generateTestsForCountry('us');

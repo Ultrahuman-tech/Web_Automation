@@ -1,5 +1,5 @@
 import { Page, expect } from '@playwright/test';
-import { CONFIG, LANGUAGE_URLS as CONFIG_LANGUAGE_URLS } from './config';
+import { CONFIG, LANGUAGE_URLS as CONFIG_LANGUAGE_URLS, REGION_URLS as CONFIG_REGION_URLS, getRegionUrl as configGetRegionUrl } from './config';
 
 export interface LanguageTranslations {
   ringAir: string;
@@ -44,6 +44,7 @@ export interface LanguageTranslations {
 // Re-export from config for backward compatibility
 export const BASE_URL = CONFIG.BASE_URL;
 export const LANGUAGE_URLS = CONFIG_LANGUAGE_URLS;
+export const REGION_URLS = CONFIG_REGION_URLS;
 
 export const TRANSLATIONS: Record<string, LanguageTranslations> = {
   en: {
@@ -204,8 +205,21 @@ export const TRANSLATIONS: Record<string, LanguageTranslations> = {
   }
 };
 
-export async function navigateToHomepage(page: Page, language: string = 'en') {
-  const url = LANGUAGE_URLS[language as keyof typeof LANGUAGE_URLS] || LANGUAGE_URLS.en;
+export async function navigateToHomepage(page: Page, regionOrLanguage: string = 'us') {
+  // Try region first, then fall back to language URL
+  const url = REGION_URLS[regionOrLanguage as keyof typeof REGION_URLS]
+    || LANGUAGE_URLS[regionOrLanguage as keyof typeof LANGUAGE_URLS]
+    || REGION_URLS.us;
+  await page.goto(url, {
+    waitUntil: 'domcontentloaded'
+  });
+}
+
+export async function navigateToRegionPage(page: Page, region: string) {
+  const url = REGION_URLS[region as keyof typeof REGION_URLS];
+  if (!url) {
+    throw new Error(`Region ${region} is not supported. Available regions: ${Object.keys(REGION_URLS).join(', ')}`);
+  }
   await page.goto(url, {
     waitUntil: 'domcontentloaded'
   });
@@ -411,4 +425,8 @@ export function getSupportedLanguages(): string[] {
 
 export function getLanguageUrl(language: string): string {
   return LANGUAGE_URLS[language as keyof typeof LANGUAGE_URLS] || LANGUAGE_URLS.en;
+}
+
+export function getRegionUrl(region: string): string {
+  return configGetRegionUrl(region);
 }

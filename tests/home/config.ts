@@ -30,10 +30,23 @@ export const CONFIG = {
   }
 } as const;
 
-// Language-specific URLs derived from base URL
+// Region-prefixed homepage URLs (new format)
+export const REGION_URLS = {
+  us: `${CONFIG.BASE_URL}/us/`,
+  in: `${CONFIG.BASE_URL}/in/`,
+  ae: `${CONFIG.BASE_URL}/ae/`,
+  gb: `${CONFIG.BASE_URL}/gb/`,
+  de: `${CONFIG.BASE_URL}/de/`,
+  jp: `${CONFIG.BASE_URL}/jp/`,
+  th: `${CONFIG.BASE_URL}/th/`,
+  at: `${CONFIG.BASE_URL}/at/`,
+  au: `${CONFIG.BASE_URL}/au/`,
+} as const;
+
+// Language URLs now redirect to region — kept for backward compatibility
 export const LANGUAGE_URLS = {
-  en: `${CONFIG.BASE_URL}/`,
-  ja: `${CONFIG.BASE_URL}/ja/`,
+  en: `${CONFIG.BASE_URL}/us/`,
+  ja: `${CONFIG.BASE_URL}/jp/`,
   de: `${CONFIG.BASE_URL}/de/`,
   th: `${CONFIG.BASE_URL}/th/`
 } as const;
@@ -45,6 +58,10 @@ export function getBaseUrl(): string {
 
 export function getLanguageUrl(language: string): string {
   return LANGUAGE_URLS[language as keyof typeof LANGUAGE_URLS] || LANGUAGE_URLS.en;
+}
+
+export function getRegionUrl(region: string): string {
+  return REGION_URLS[region as keyof typeof REGION_URLS] || REGION_URLS.us;
 }
 
 export function getSupportedLanguages(): readonly string[] {

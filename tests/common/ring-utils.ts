@@ -1,4 +1,5 @@
 import { Page, expect, test, Locator } from '@playwright/test';
+import { getBaseUrl, ringBuyUrl, mapRegion, extractRegionFromUrl } from './url-builder';
 
 export const COLORS = [
   'ROSE_GOLD',
@@ -30,12 +31,10 @@ const ensureProtocol = (url: string): string => {
   return url;
 };
 
-const RAW_RING_BASE_URL = process.env.RING_BASE_URL ?? 'https://ultrahuman.com/ring/buy';
-const BASE_RING_URL = ensureProtocol(
-  RAW_RING_BASE_URL.includes('/ring/buy')
-    ? RAW_RING_BASE_URL
-    : `${RAW_RING_BASE_URL.replace(/\/?$/, '')}/ring/buy`
-);
+// Base URL for ring tests — now just the domain, path built by url-builder
+const RING_BASE_URL = process.env.RING_BASE_URL
+  ? ensureProtocol(process.env.RING_BASE_URL.replace(/\/ring\/buy\/?$/, '').replace(/\/+$/, ''))
+  : getBaseUrl();
 const PRICE_REGEX =
   /(?:MXN\s*\$|C\$|A\$|SAR|AED|USD|SGD|AUD|INR|₹|£|€|R|\$)\s*[\d.,]+(?:\s*\(Tax incl\.\))?/gi;
 
@@ -122,15 +121,9 @@ type ExpectedRingPrice = {
 };
 
 function extractCountrySlug(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    const match = parsed.pathname.match(/\/ring\/buy\/([^/]+)/i);
-    if (match?.[1]) return match[1].toLowerCase();
-  } catch {
-    const fallback = url.match(/\/ring\/buy\/([^/?#]+)/i);
-    if (fallback?.[1]) return fallback[1].toLowerCase();
-  }
-  return null;
+  // Delegate to the shared url-builder utility which handles both old and new formats
+  const region = extractRegionFromUrl(url);
+  return region ? mapRegion(region) : null;
 }
 
 function getExpectedRingPrice(url: string, color?: string): ExpectedRingPrice | null {
@@ -229,8 +222,7 @@ export async function collectProductPrices(page: Page): Promise<Set<string>> {
 
 export async function openLanding(page: Page, country: string) {
   await test.step(`Navigate to ${country} landing page`, async () => {
-    const base = BASE_RING_URL.endsWith('/') ? BASE_RING_URL : `${BASE_RING_URL}/`;
-    const url = `${base}${country}/`;
+    const url = ringBuyUrl(RING_BASE_URL, country);
     // best-effort navigation: try primary, then retry once with a longer timeout and different waitUntil
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });

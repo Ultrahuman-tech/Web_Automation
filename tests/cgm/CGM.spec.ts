@@ -47,11 +47,12 @@ const ensureProtocol = (url: string): string => {
   return url;
 };
 
-// Support both full pricing URL or just base domain
-const CGM_BASE_URL = ensureProtocol(process.env.CGM_BASE_URL ?? 'https://ultrahuman.com/pricing/');
-const BASE_PRICING_URL = CGM_BASE_URL.includes('/pricing')
-  ? CGM_BASE_URL.replace(/\/?$/, '/') // Ensure trailing slash
-  : `${CGM_BASE_URL.replace(/\/?$/, '')}/pricing/`; // Add /pricing/ if not present
+// Strip /pricing from env var if present, keeping just the domain
+const CGM_DOMAIN = ensureProtocol(
+  (process.env.CGM_BASE_URL ?? 'https://www.ultrahuman.com')
+    .replace(/\/pricing\/?$/, '')
+    .replace(/\/+$/, '')
+);
 
 type PriceInfo = {
   text: string;
@@ -340,7 +341,7 @@ async function collectCartPrice(page: Page, region: RegionConfig, expectedPlanPr
 
 async function runCheckoutFlow(page: Page, region: RegionConfig, testInfo: TestInfo) {
   // Always navigate directly to the region-specific URL
-  const targetUrl = `${BASE_PRICING_URL}${region.slug}/`;
+  const targetUrl = `${CGM_DOMAIN}/${region.slug}/pricing/`;
 
   await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('body', { timeout: 15000 });

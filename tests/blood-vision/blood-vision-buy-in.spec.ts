@@ -3,7 +3,7 @@ import { test, expect, Page, TestInfo, Locator } from '@playwright/test';
 // ============= CONFIGURATION =============
 const BLOOD_VISION_CONFIG = {
   BASE_URL: process.env.BLOOD_VISION_BASE_URL ?? 'https://ultrahuman.com',
-  BUY_PATH: '/blood-vision/buy/in/',
+  BUY_PATH: '/in/blood-vision/buy/',
   TEST_PIN_CODE: '560003',
   INVALID_PIN_CODE: '563101', // Kolar - may not be serviceable
   DAYS_FROM_TODAY: 3,
