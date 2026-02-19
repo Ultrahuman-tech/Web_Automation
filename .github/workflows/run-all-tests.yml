@@ -1,0 +1,91 @@
+name: Run All Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Override base URL for all suites (e.g. https://staging.ultrahuman.com/)'
+        required: false
+        default: 'https://www.ultrahuman.com/'
+  schedule:
+    - cron: '0 2 * * 0' # Weekly — Sunday 07:30 IST (02:00 UTC)
+
+jobs:
+  ring:
+    name: Ring Tests
+    uses: ./.github/workflows/playwright.yml
+    with:
+      ring_base_url: ${{ inputs.base_url || 'https://www.ultrahuman.com/' }}
+    secrets: inherit
+
+  blood-vision:
+    name: Blood Vision Tests
+    uses: ./.github/workflows/blood-vision-playwright.yml
+    with:
+      base_url: ${{ inputs.base_url || 'https://www.ultrahuman.com/' }}
+    secrets: inherit
+
+  cgm:
+    name: CGM Tests
+    uses: ./.github/workflows/cgm-playwright.yml
+    with:
+      base_url: ${{ inputs.base_url || 'https://www.ultrahuman.com/pricing/' }}
+    secrets: inherit
+
+  home:
+    name: Home Pricing Tests
+    uses: ./.github/workflows/home-playwright.yml
+    with:
+      home_base_url: ${{ inputs.base_url || 'https://www.ultrahuman.com/home/buy/' }}
+    secrets: inherit
+
+  smoke:
+    name: Smoke Tests
+    uses: ./.github/workflows/smoke-playwright.yml
+    with:
+      base_url: ${{ inputs.base_url || 'https://www.ultrahuman.com/' }}
+    secrets: inherit
+
+  region:
+    name: Region Switcher Tests
+    uses: ./.github/workflows/region-switcher-playwright.yml
+    with:
+      base_url: ${{ inputs.base_url || 'https://www.ultrahuman.com/' }}
+    secrets: inherit
+
+  redirects:
+    name: URL Redirect Tests
+    uses: ./.github/workflows/redirects-playwright.yml
+    with:
+      base_url: ${{ inputs.base_url || 'https://www.ultrahuman.com/' }}
+    secrets: inherit
+
+  summary:
+    name: Summary & Slack Notification
+    runs-on: ubuntu-latest
+    needs: [ring, blood-vision, cgm, home, smoke, region, redirects]
+    if: always()
+    steps:
+      - name: Build summary
+        run: |
+          echo "# 🧪 All Tests Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Suite | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Ring | ${{ needs.ring.result == 'success' && '✅ Passed' || needs.ring.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Blood Vision | ${{ needs.blood-vision.result == 'success' && '✅ Passed' || needs.blood-vision.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| CGM | ${{ needs.cgm.result == 'success' && '✅ Passed' || needs.cgm.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Home Pricing | ${{ needs.home.result == 'success' && '✅ Passed' || needs.home.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Smoke | ${{ needs.smoke.result == 'success' && '✅ Passed' || needs.smoke.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Region Switcher | ${{ needs.region.result == 'success' && '✅ Passed' || needs.region.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| URL Redirects | ${{ needs.redirects.result == 'success' && '✅ Passed' || needs.redirects.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Slack Notification
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "🧪 *All Tests Summary*\n• Base URL: ${{ inputs.base_url || 'https://www.ultrahuman.com/' }}\n• Branch: ${{ github.ref_name }}\n• By: ${{ github.actor }}\n\n• Ring: ${{ needs.ring.result == 'success' && '✅' || '❌' }}\n• Blood Vision: ${{ needs.blood-vision.result == 'success' && '✅' || '❌' }}\n• CGM: ${{ needs.cgm.result == 'success' && '✅' || '❌' }}\n• Home Pricing: ${{ needs.home.result == 'success' && '✅' || '❌' }}\n• Smoke: ${{ needs.smoke.result == 'success' && '✅' || '❌' }}\n• Region Switcher: ${{ needs.region.result == 'success' && '✅' || '❌' }}\n• URL Redirects: ${{ needs.redirects.result == 'success' && '✅' || '❌' }}\n\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Report>"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

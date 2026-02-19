@@ -1,20 +1,20 @@
-name: Home Pricing Playwright Tests
+name: Smoke Tests
 
 on:
   workflow_dispatch:
     inputs:
-      home_base_url:
-        description: 'Override Home Buy base URL (e.g. https://stage.example.com/home/buy/)'
+      base_url:
+        description: 'Override base URL (e.g. https://staging.ultrahuman.com/)'
         required: false
-        default: 'https://www.ultrahuman.com/home/buy/'
+        default: 'https://www.ultrahuman.com/'
   workflow_call:
     inputs:
-      home_base_url:
+      base_url:
         type: string
         required: false
-        default: 'https://www.ultrahuman.com/home/buy/'
+        default: 'https://www.ultrahuman.com/'
   schedule:
-    - cron: '0 1 * * *'
+    - cron: '0 4 * * *' # 09:30 IST (04:00 UTC)
 
 jobs:
   e2e:
@@ -23,7 +23,7 @@ jobs:
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
       PW_TEST_HTML_REPORT_OPEN: never
       PLAYWRIGHT_HTML_REPORT: playwright-report
-      HOME_BUY_BASE_URL: ${{ inputs.home_base_url || github.event.inputs.home_base_url || 'https://www.ultrahuman.com/home/buy/' }}
+      SMOKE_BASE_URL: ${{ inputs.base_url || github.event.inputs.base_url || 'https://www.ultrahuman.com/' }}
 
     steps:
       - name: Check out repository
@@ -40,10 +40,10 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Run Home Playwright suite
+      - name: Run Smoke Tests
         id: run_tests
         continue-on-error: true
-        run: npx playwright test tests/home-pricing/home-buy-in.spec.ts --project=chromium --workers=2
+        run: npx playwright test tests/smoke/region-pages-smoke.spec.ts --project=chromium --workers=4
 
       - name: Parse Test Results
         id: parse
@@ -56,8 +56,10 @@ jobs:
           const p = process.env.PLAYWRIGHT_JSON_OUTPUT_NAME || 'test-results/results.json';
 
           let passed = 0, failed = 0, skipped = 0, total = 0;
+          const failedTests = [];
 
-          function countFromSuite(suite) {
+          function collectFromSuite(suite, parentTitle = '') {
+            const suiteTitle = parentTitle ? `${parentTitle} > ${suite.title}` : suite.title;
             if (suite.specs) {
               for (const spec of suite.specs) {
                 for (const t of (spec.tests || [])) {
@@ -65,27 +67,31 @@ jobs:
                   const last = (t.results && t.results.length) ? t.results[t.results.length - 1] : null;
                   const status = (last && last.status) || t.outcome || t.status || 'unknown';
                   if (status === 'passed') passed++;
-                  else if (status === 'failed' || status === 'timedOut') failed++;
+                  else if (status === 'failed' || status === 'timedOut') {
+                    failed++;
+                    const testName = suiteTitle ? `${suiteTitle} > ${spec.title}` : spec.title;
+                    failedTests.push(testName);
+                  }
                   else skipped++;
                 }
               }
             }
-            if (suite.suites) suite.suites.forEach(countFromSuite);
+            if (suite.suites) suite.suites.forEach(s => collectFromSuite(s, suiteTitle));
           }
 
           if (fs.existsSync(p)) {
             try {
               const data = JSON.parse(fs.readFileSync(p, 'utf8'));
-              if (data && data.stats) {
+              if (Array.isArray(data?.suites)) {
+                data.suites.forEach(s => collectFromSuite(s, ''));
+                total = passed + failed + skipped;
+              }
+              if (total === 0 && data && data.stats) {
                 const stats = data.stats;
                 passed = Number(stats.expected || 0) + Number(stats.flaky || 0);
                 failed = Number(stats.unexpected || 0);
                 skipped = Number(stats.skipped || 0);
                 total = Number(stats.total || (passed + failed + skipped));
-              }
-              if (total === 0 && Array.isArray(data?.suites)) {
-                data.suites.forEach(countFromSuite);
-                total = passed + failed + skipped;
               }
             } catch (e) {
               console.error(`Failed to parse ${p}:`, e);
@@ -95,18 +101,22 @@ jobs:
           }
           const anyFailed = failed > 0 ? 'true' : 'false';
 
+          const failedTestsStr = failedTests.slice(0, 10).join('\\n• ');
+          const hasMoreFailed = failedTests.length > 10 ? `\\n...and ${failedTests.length - 10} more` : '';
+
           fs.appendFileSync(out, `TESTS_PASSED=${passed}\n`);
           fs.appendFileSync(out, `TESTS_FAILED_COUNT=${failed}\n`);
           fs.appendFileSync(out, `TESTS_SKIPPED=${skipped}\n`);
           fs.appendFileSync(out, `TESTS_TOTAL=${total}\n`);
           fs.appendFileSync(out, `ANY_FAILED=${anyFailed}\n`);
+          fs.appendFileSync(out, `FAILED_TESTS=${failedTestsStr}${hasMoreFailed}\n`);
           NODE
 
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: home-playwright-report
+          name: smoke-playwright-report
           path: playwright-report
 
       - name: Build Slack payload
@@ -115,16 +125,22 @@ jobs:
         shell: bash
         run: |
           payload=$(node - <<'NODE'
+          const failedTests = process.env.FAILED_TESTS || '';
+          const failedSection = failedTests
+            ? `\n\n🔴 *Failed Tests:*\n• ${failedTests}`
+            : '';
+
           const payload = {
-            text: `🏠 *Home Pricing Tests Summary*\n` +
-                  `• Base URL: ${process.env.HOME_BUY_BASE_URL}\n` +
+            text: `💨 *Smoke Tests Summary*\n` +
+                  `• Base URL: ${process.env.SMOKE_BASE_URL}\n` +
                   `• Branch: ${process.env.GITHUB_REF_NAME}\n` +
                   `• By: ${process.env.GITHUB_ACTOR}\n\n` +
                   `✅ Passed: ${process.env.TESTS_PASSED}\n` +
                   `❌ Failed: ${process.env.TESTS_FAILED_COUNT}\n` +
                   `⚪ Skipped: ${process.env.TESTS_SKIPPED}\n` +
-                  `📊 Total: ${process.env.TESTS_TOTAL}\n\n` +
-                  `🔗 <${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}|View Report>\n\n` +
+                  `📊 Total: ${process.env.TESTS_TOTAL}` +
+                  failedSection +
+                  `\n\n🔗 <${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}|View Report>\n\n` +
                   (process.env.ANY_FAILED === 'true' ? ':x: Some tests failed!' : ':white_check_mark: All tests passed!')
           };
           console.log(JSON.stringify(payload));
@@ -143,6 +159,7 @@ jobs:
           TESTS_SKIPPED: ${{ steps.parse.outputs.TESTS_SKIPPED }}
           TESTS_TOTAL: ${{ steps.parse.outputs.TESTS_TOTAL }}
           ANY_FAILED: ${{ steps.parse.outputs.ANY_FAILED }}
+          FAILED_TESTS: ${{ steps.parse.outputs.FAILED_TESTS }}
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}

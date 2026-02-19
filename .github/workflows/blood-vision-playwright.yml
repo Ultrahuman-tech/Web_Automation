@@ -7,6 +7,12 @@ on:
         description: 'Override pricing base URL (e.g. https://stage.example.com/pricing/)'
         required: false
         default: 'https://www.ultrahuman.com/'
+  workflow_call:
+    inputs:
+      base_url:
+        type: string
+        required: false
+        default: 'https://www.ultrahuman.com/'
   schedule:
     - cron: '30 5 * * *' # 11:00 IST (05:30 UTC)
 
@@ -17,7 +23,7 @@ jobs:
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
       PW_TEST_HTML_REPORT_OPEN: never
       PLAYWRIGHT_HTML_REPORT: playwright-report
-      BLOODVISION_BASE_URL: ${{ github.event.inputs.base_url || 'https://www.ultrahuman.com/' }}
+      BLOODVISION_BASE_URL: ${{ inputs.base_url || github.event.inputs.base_url || 'https://www.ultrahuman.com/' }}
 
     steps:
       - name: Check out repository
