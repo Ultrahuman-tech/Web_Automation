@@ -46,8 +46,8 @@ const PRODUCT_PAGES: PageEntry[] = [
 const HEALTH_MARKETING_PAGES: PageEntry[] = [
   { path: '/womens-health/',              name: "Women's Health" },
   { path: '/hsa-fsa/',                    name: 'HSA / FSA' },
-  { path: '/coaches/',                    name: 'Coaches' },
-  { path: '/reviews/',                    name: 'Reviews' },
+  //{ path: '/coaches/',                    name: 'Coaches' },
+  //{ path: '/reviews/',                    name: 'Reviews' },
   { path: '/heroes/',                     name: 'Heroes' },
   { path: '/partners/',                   name: 'Partners' },
   { path: '/retail/',                     name: 'Retail' },
