@@ -36,7 +36,7 @@ export function getBaseUrl(): string {
 // ── Region Mapping ───────────────────────────────────────────────────────────
 
 const REGION_MAP: Record<string, string> = {
-  global: 'us',
+  global: 'global', // Keep 'global' as a valid region for backward compatibility, but it maps to 'us' in URLs
   pr: 'us',
   row: 'us',
   // Force English locale for German-language regions to avoid element-matching issues
