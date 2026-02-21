@@ -39,6 +39,12 @@ const REGION_MAP: Record<string, string> = {
   global: 'us',
   pr: 'us',
   row: 'us',
+  // Force English locale for German-language regions to avoid element-matching issues
+  at: 'at-en',
+  de: 'de-en',
+  // Reverse mappings so price lookups resolve back to the country code
+  'at-en': 'at',
+  'de-en': 'de',
 };
 
 /**

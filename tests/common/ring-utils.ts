@@ -392,10 +392,6 @@ export async function addRingToCart(
     try {
       await page.waitForSelector('[data-testid="cart-list"]', { state: 'visible', timeout: 50000 });
     } catch (error) {
-      await page.screenshot({
-        path: `errors/cart-list-failure-${Date.now()}.png`,
-        fullPage: true,
-      });
       console.error('Cart list not visible after Add to Cart:', error);
       throw error;
     }
@@ -424,10 +420,6 @@ export async function addRingToCart(
     );
 
     if (!hasOverlap) {
-      await page.screenshot({
-        path: `errors/ring-price-mismatch-${Date.now()}.png`,
-        fullPage: true,
-      });
       console.error(
         '[Ring] Price mismatch detected',
         {
@@ -460,12 +452,6 @@ export async function addRingToCart(
             cartPriceCandidates: Array.from(cartPriceCandidates),
           });
         } else {
-          await page
-            .screenshot({
-              path: `errors/ring-expected-price-mismatch-${expectedPrice.country}-${Date.now()}.png`,
-              fullPage: true,
-            })
-            .catch(() => {});
           console.error('[Ring] Expected price mismatch', {
             country: expectedPrice.country,
             expected: expectedPrice.priceText,
@@ -516,12 +502,6 @@ export async function addRingToCart(
         .catch(() => {});
 
       if (!colorMatched || !sizeMatched) {
-        await page
-          .screenshot({
-            path: `errors/ring-variant-mismatch-${Date.now()}.png`,
-            fullPage: true,
-          })
-          .catch(() => {});
         console.error('[Ring] Variant mismatch between PDP and cart', {
           selectedColor: opts.color,
           selectedSize: opts.size,
@@ -669,7 +649,6 @@ export async function addRingToCart(
     try {
       await clickCheckout();
     } catch (error) {
-      await page.screenshot({ path: `errors/cart-checkout-failure-${Date.now()}.png`, fullPage: true }).catch(() => {});
       console.error('Checkout click failed', error);
       throw error;
     }
@@ -769,10 +748,6 @@ export async function validatePowerPlugPricing(
       }
     } catch (error) {
       console.error(`[PowerPlug:${country}] Failed to validate price page:`, error);
-      await page.screenshot({
-        path: `errors/powerplug-price-page-${country}-${Date.now()}.png`,
-        fullPage: true,
-      }).catch(() => {});
     }
   });
 
@@ -830,10 +805,6 @@ export async function validatePowerPlugPricing(
       }
     } catch (error) {
       console.error(`[PowerPlug:${country}] Failed to validate cart page:`, error);
-      await page.screenshot({
-        path: `errors/powerplug-cart-${country}-${Date.now()}.png`,
-        fullPage: true,
-      }).catch(() => {});
     }
   });
 
@@ -856,13 +827,6 @@ export async function validatePowerPlugPricing(
     }, null, 2),
     contentType: 'application/json',
   }).catch(() => {});
-
-  if (!success) {
-    await page.screenshot({
-      path: `errors/powerplug-mismatch-${country}-${Date.now()}.png`,
-      fullPage: true,
-    }).catch(() => {});
-  }
 
   return { success, pricePageMatch, cartPageMatch, details };
 }
