@@ -1,30 +1,28 @@
-name: Ring Tests
+name: Ring Stacking Tests
 
 on:
-  # Schedule: daily at 8:00 AM IST (02:30 UTC)
-  schedule:
-    - cron: '30 3 * * *'
   workflow_dispatch:
     inputs:
-      ring_base_url:
-        description: 'Override ring base URL (e.g. https://stage.example.com/ring/buy/)'
+      stacking_base_url:
+        description: 'Override stacking base URL (e.g. https://www.ultrahuman.com/)'
         required: false
         default: 'https://www.ultrahuman.com/'
   workflow_call:
     inputs:
-      ring_base_url:
+      stacking_base_url:
         type: string
         required: false
         default: 'https://www.ultrahuman.com/'
 
 jobs:
-  test:
+  e2e:
     runs-on: ubuntu-latest
     env:
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
       PW_TEST_HTML_REPORT_OPEN: never
       PLAYWRIGHT_HTML_REPORT: playwright-report
-      RING_BASE_URL: ${{ inputs.ring_base_url || github.event.inputs.ring_base_url || 'https://www.ultrahuman.com/' }}
+      STACKING_BASE_URL: ${{ inputs.stacking_base_url || github.event.inputs.stacking_base_url || 'https://www.ultrahuman.com/' }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -40,15 +38,13 @@ jobs:
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
 
-      # Run with BOTH json and html reporters so we can parse counts and still have a nice report.
-      - name: Run Ring Tests
+      - name: Run Ring Stacking Tests
         id: run_tests
-        continue-on-error: true            # don't stop the job on test failures
+        continue-on-error: true
         run: |
           mkdir -p "$(dirname "${PLAYWRIGHT_JSON_OUTPUT_NAME}")"
-          npx playwright test tests/ring/
+          npx playwright test tests/ring/stacking.spec.ts --project=chromium --workers=4
 
-      # Parse results.json and expose counts as step outputs (no env vars -> no VS Code warnings)
       - name: Parse Test Results
         id: parse
         if: always()
@@ -66,7 +62,6 @@ jobs:
               for (const spec of suite.specs) {
                 for (const t of (spec.tests || [])) {
                   total++;
-                  // Use the latest result for each test attempt
                   const last = (t.results && t.results.length) ? t.results[t.results.length - 1] : null;
                   const status = (last && last.status) || t.outcome || t.status || 'unknown';
                   if (status === 'passed') passed++;
@@ -98,9 +93,8 @@ jobs:
           } else {
             console.warn(`Results file not found at ${p}`);
           }
-          const anyFailed = failed > 0 ? 'true' : 'false';
 
-          // Emit outputs
+          const anyFailed = failed > 0 ? 'true' : 'false';
           fs.appendFileSync(out, `TESTS_PASSED=${passed}\n`);
           fs.appendFileSync(out, `TESTS_FAILED_COUNT=${failed}\n`);
           fs.appendFileSync(out, `TESTS_SKIPPED=${skipped}\n`);
@@ -112,7 +106,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: stacking-playwright-report
           path: playwright-report
 
       - name: Build Slack payload
@@ -120,11 +114,10 @@ jobs:
         if: always()
         shell: bash
         run: |
-          # Build a JSON payload safely using node and write it to GITHUB_OUTPUT as 'payload'
           payload=$(node - <<'NODE'
           const payload = {
-            text: `🧪 *Ring Tests Summary*\n` +
-                  `• Base URL: ${process.env.RING_BASE_URL}\n` +
+            text: `💍 *Ring Stacking Tests Summary*\n` +
+                  `• Base URL: ${process.env.STACKING_BASE_URL}\n` +
                   `• Branch: ${process.env.GITHUB_REF_NAME}\n` +
                   `• By: ${process.env.GITHUB_ACTOR}\n\n` +
                   `✅ Passed: ${process.env.TESTS_PASSED}\n` +
@@ -137,7 +130,6 @@ jobs:
           console.log(JSON.stringify(payload));
           NODE
           )
-          # Write payload to GITHUB_OUTPUT using multiline delimiter to preserve content
           {
             echo "payload<<EOF"
             printf '%s\n' "$payload"

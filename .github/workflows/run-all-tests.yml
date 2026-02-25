@@ -7,6 +7,10 @@ on:
         description: 'Override base URL for all suites (e.g. https://staging.ultrahuman.com/)'
         required: false
         default: 'https://www.ultrahuman.com'
+      stacking_base_url:
+        description: 'Override stacking base URL (e.g. https://www.ultrahuman.com/)'
+        required: false
+        default: 'https://www.ultrahuman.com/'
   schedule:
     - cron: '0 2 * * 0' # Weekly — Sunday 07:30 IST (02:00 UTC)
 
@@ -60,10 +64,17 @@ jobs:
       base_url: ${{ inputs.base_url || 'https://www.ultrahuman.com' }}
     secrets: inherit
 
+  stacking:
+    name: Ring Stacking Tests
+    uses: ./.github/workflows/stacking-playwright.yml
+    with:
+      stacking_base_url: ${{ inputs.stacking_base_url || 'https://www.ultrahuman.com/' }}
+    secrets: inherit
+
   summary:
     name: Summary & Slack Notification
     runs-on: ubuntu-latest
-    needs: [ring, blood-vision, cgm, home, smoke, region, redirects]
+    needs: [ring, blood-vision, cgm, home, smoke, region, redirects, stacking]
     if: always()
     steps:
       - name: Build summary
@@ -79,13 +90,14 @@ jobs:
           echo "| Smoke | ${{ needs.smoke.result == 'success' && '✅ Passed' || needs.smoke.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Region Switcher | ${{ needs.region.result == 'success' && '✅ Passed' || needs.region.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| URL Redirects | ${{ needs.redirects.result == 'success' && '✅ Passed' || needs.redirects.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Ring Stacking | ${{ needs.stacking.result == 'success' && '✅ Passed' || needs.stacking.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
 
       - name: Slack Notification
         uses: slackapi/slack-github-action@v1.24.0
         with:
           payload: |
             {
-              "text": "🧪 *All Tests Summary*\n• Base URL: ${{ inputs.base_url || 'https://www.ultrahuman.com' }}\n• Branch: ${{ github.ref_name }}\n• By: ${{ github.actor }}\n\n• Ring: ${{ needs.ring.result == 'success' && '✅' || '❌' }}\n• Blood Vision: ${{ needs.blood-vision.result == 'success' && '✅' || '❌' }}\n• CGM: ${{ needs.cgm.result == 'success' && '✅' || '❌' }}\n• Home Pricing: ${{ needs.home.result == 'success' && '✅' || '❌' }}\n• Smoke: ${{ needs.smoke.result == 'success' && '✅' || '❌' }}\n• Region Switcher: ${{ needs.region.result == 'success' && '✅' || '❌' }}\n• URL Redirects: ${{ needs.redirects.result == 'success' && '✅' || '❌' }}\n\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Report>"
+              "text": "🧪 *All Tests Summary*\n• Base URL: ${{ inputs.base_url || 'https://www.ultrahuman.com' }}\n• Stacking Base URL: ${{ inputs.stacking_base_url || 'https://www.ultrahuman.com/' }}\n• Branch: ${{ github.ref_name }}\n• By: ${{ github.actor }}\n\n• Ring: ${{ needs.ring.result == 'success' && '✅' || '❌' }}\n• Blood Vision: ${{ needs.blood-vision.result == 'success' && '✅' || '❌' }}\n• CGM: ${{ needs.cgm.result == 'success' && '✅' || '❌' }}\n• Home Pricing: ${{ needs.home.result == 'success' && '✅' || '❌' }}\n• Smoke: ${{ needs.smoke.result == 'success' && '✅' || '❌' }}\n• Region Switcher: ${{ needs.region.result == 'success' && '✅' || '❌' }}\n• URL Redirects: ${{ needs.redirects.result == 'success' && '✅' || '❌' }}\n• Ring Stacking: ${{ needs.stacking.result == 'success' && '✅' || '❌' }}\n\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Report>"
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
