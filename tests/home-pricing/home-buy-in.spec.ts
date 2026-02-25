@@ -8,11 +8,11 @@ const ensureProtocol = (url: string): string => {
   return url;
 };
 
-const RAW_HOME_BUY_URL = process.env.HOME_BUY_BASE_URL ?? 'https://www.ultrahuman.com/home/buy/';
-const HOME_BUY_BASE_URL = ensureProtocol(
-  RAW_HOME_BUY_URL.includes('/home/buy')
-    ? RAW_HOME_BUY_URL.replace(/\/?$/, '/')
-    : `${RAW_HOME_BUY_URL.replace(/\/?$/, '')}/home/buy/`
+// Strip /home/buy from env var if present, keeping just the domain
+const HOME_BUY_DOMAIN = ensureProtocol(
+  (process.env.HOME_BUY_BASE_URL ?? 'https://www.ultrahuman.com')
+    .replace(/\/home\/buy\/?$/, '')
+    .replace(/\/+$/, '')
 );
 
 const ORDER_SUMMARY_SELECTOR = '#order-summary-card';
@@ -729,7 +729,7 @@ test.describe('Ultrahuman Home pricing with UHX coverage', () => {
       const tokenPattern = resolvedRegion.currencyTokenRegex ?? DEFAULT_PRICE_TOKEN_REGEX;
 
       await test.step('Navigate & prepare page', async () => {
-        await page.goto(`${HOME_BUY_BASE_URL}${resolvedRegion.slug}/`, {
+        await page.goto(`${HOME_BUY_DOMAIN}/${resolvedRegion.slug}/home/buy/`, {
           waitUntil: 'domcontentloaded',
           timeout: 60000,
         });
