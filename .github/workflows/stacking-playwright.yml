@@ -1,6 +1,9 @@
 name: Ring Stacking Tests
 
 on:
+  # Schedule: daily at 9:00 AM IST (03:30 UTC)
+  schedule:
+    - cron: '30 3 * * *'
   workflow_dispatch:
     inputs:
       stacking_base_url:
