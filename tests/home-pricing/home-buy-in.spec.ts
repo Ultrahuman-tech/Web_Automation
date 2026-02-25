@@ -50,6 +50,7 @@ type RegionExpectedPrices = {
 type RegionConfig = {
   name: string;
   slug: string;
+  urlSlugs?: string[];
   optionLabel: string;
   optionLabels?: string[];
   basePrice?: string;
@@ -290,9 +291,9 @@ const REGION_CONFIGS: RegionConfig[] = [
   },
   {
     name: 'United Kingdom',
-    slug: 'uk',
+    slug: 'gb',
     optionLabel: '🇬🇧United Kingdom',
-    optionLabels: ['🇬🇧 UK', 'United Kingdom', 'UK'],
+    optionLabels: ['🇬🇧 GB', '🇬🇧 UK', 'United Kingdom', 'UK'],
     basePrice: '£381.42',
     coverageOneYear: '£36',
     coverageTwoYear: '£54',
@@ -339,7 +340,8 @@ const REGION_CONFIGS: RegionConfig[] = [
   },
   {
     name: 'Germany',
-    slug: 'de',
+    slug: 'de-en',
+    urlSlugs: ['de-en', 'de'],
     optionLabel: '🇩🇪Germany',
     optionLabels: ['🇩🇪 DE', 'Germany', 'Deutschland'],
     basePrice: '€428.46',
@@ -526,36 +528,38 @@ async function selectRegionOption(page: Page, region: RegionConfig): Promise<boo
 }
 
 async function ensureRegion(page: Page, region: RegionConfig, summaryLocator?: Locator) {
-  await expect(page, 'Region URL should include slug').toHaveURL(
-    new RegExp(`/${escapeRegExp(region.slug)}(?:/|\\?|$)`),
-    { timeout: ASSERT_TIMEOUT }
-  );
-
-  if (!region.basePrice?.trim()) {
-    return;
-  }
+  const slugPatterns = [region.slug, ...(region.urlSlugs ?? [])]
+    .filter(Boolean)
+    .map((slug) => `/${escapeRegExp(slug)}(?:/|\\?|$)`);
+  const regionUrlRegex = new RegExp(slugPatterns.join('|'));
+  const hasExpectedUrl = () => regionUrlRegex.test(page.url());
 
   const summary = summaryLocator ?? page.locator(ORDER_SUMMARY_SELECTOR);
   await summary.waitFor({ state: 'visible', timeout: ASSERT_TIMEOUT });
+  const expectedBasePrice = region.basePrice?.trim() ?? '';
 
-  const basePriceText = region.basePrice ?? '';
   const hasExpectedPrice = async () => {
+    if (!expectedBasePrice) return true;
     try {
-      if (!basePriceText.trim()) return false;
-      await expect(summary).toContainText(basePriceText, { timeout: 500 });
+      await expect(summary).toContainText(expectedBasePrice, { timeout: 500 });
       return true;
     } catch {
       return false;
     }
   };
 
-  if (await hasExpectedPrice()) {
+  if (hasExpectedUrl() && (await hasExpectedPrice())) {
     return;
   }
 
   const mainContent = page.locator('#main-content');
   const innerText = await mainContent.innerText().catch(() => '');
-  if (textContainsPrice(innerText, region.basePrice) && (await hasExpectedPrice())) {
+  if (
+    hasExpectedUrl() &&
+    expectedBasePrice &&
+    textContainsPrice(innerText, expectedBasePrice) &&
+    (await hasExpectedPrice())
+  ) {
     return;
   }
 
@@ -577,10 +581,14 @@ async function ensureRegion(page: Page, region: RegionConfig, summaryLocator?: L
     }
 
     await page.waitForTimeout(REGION_SWITCH_DELAY_MS);
-    if (await hasExpectedPrice()) {
+    if (hasExpectedUrl() && (await hasExpectedPrice())) {
       return;
     }
   }
+
+  await expect(page, 'Region URL should include slug').toHaveURL(regionUrlRegex, {
+    timeout: ASSERT_TIMEOUT,
+  });
 
   // If we reach here, we couldn't find the configured expected price.
   // Don't fail the whole test because prices on site may change or show a struck-through value.
@@ -591,8 +599,8 @@ async function ensureRegion(page: Page, region: RegionConfig, summaryLocator?: L
 
 async function selectCoverageOptions(page: Page, coverageOneYear?: string, coverageTwoYear?: string) {
   const oneYearPattern = coverageOneYear?.trim()
-    ? new RegExp(`1 Year Coverage\\s*${escapeRegExp(coverageOneYear)}`, 'i')
-    : /1\s*Year\s*Coverage/i;
+    ? new RegExp(`1\\s*(?:Year|Jahr|Jahre)\\s*(?:Coverage|Abdeckung)?[\\s\\S]*${escapeRegExp(coverageOneYear)}`, 'i')
+    : /1\s*(?:Year|Jahr|Jahre)\s*(?:Coverage|Abdeckung)?/i;
   const oneYearBtn = page
     .getByRole('button', {
       name: oneYearPattern,
@@ -602,8 +610,8 @@ async function selectCoverageOptions(page: Page, coverageOneYear?: string, cover
   await oneYearBtn.click();
 
   const twoYearPattern = coverageTwoYear?.trim()
-    ? new RegExp(`2 Year Coverage[\\s\\S]*${escapeRegExp(coverageTwoYear)}`, 'i')
-    : /2\s*Year\s*Coverage/i;
+    ? new RegExp(`2\\s*(?:Year|Jahr|Jahre)\\s*(?:Coverage|Abdeckung)?[\\s\\S]*${escapeRegExp(coverageTwoYear)}`, 'i')
+    : /2\s*(?:Year|Jahr|Jahre)\s*(?:Coverage|Abdeckung)?/i;
   const twoYearBtn = page
     .getByRole('button', {
       name: twoYearPattern,
@@ -713,7 +721,7 @@ async function closeCartIfVisible(page: Page) {
   for (const locator of closeSelectors) {
     if (await locator.isVisible().catch(() => false)) {
       await locator.click().catch(() => {});
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(500).catch(() => {});
       break;
     }
   }
