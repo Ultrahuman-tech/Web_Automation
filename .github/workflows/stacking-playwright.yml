@@ -46,7 +46,7 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p "$(dirname "${PLAYWRIGHT_JSON_OUTPUT_NAME}")"
-          npx playwright test tests/ring/stacking.spec.ts --project=chromium --workers=4
+          npx playwright test tests/stacking/ --project=chromium --workers=4
 
       - name: Parse Test Results
         id: parse
