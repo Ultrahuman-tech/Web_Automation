@@ -62,15 +62,15 @@ type PriceInfo = {
 
 const EXPECTED_PRICES: Record<string, PriceInfo> = {
   in: { text: '₹34,999', value: 34999, currency: '₹' },
-  gb: { text: '£169', value: 169, currency: '£' },
+  gb: { text: '£118.3', value: 118.3, currency: '£' },
 };
 
-const DEFAULT_EXPECTED_PRICE: PriceInfo = { text: '€189', value: 189, currency: '€' };
+const DEFAULT_EXPECTED_PRICE: PriceInfo = { text: '€132.3', value: 132.3, currency: '€' };
 
 // UltrahumanX - 1 year subscription prices by currency
 const UHX_PRICES: Record<string, number> = {
-  '€': 0,
-  '£': 0,
+  '€': 36,
+  '£': 36,
   '₹': 0, // No UHX for India
 };
 
