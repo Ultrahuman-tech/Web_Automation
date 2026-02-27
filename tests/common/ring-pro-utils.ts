@@ -44,7 +44,7 @@ const RING_PRO_BASE_URL = process.env.RING_PRO_BASE_URL
   ? ensureProtocol(process.env.RING_PRO_BASE_URL.replace(/\/ring-pro\/buy\/?$/, '').replace(/\/+$/, ''))
   : (process.env.CUSTOM_BASE_URL || process.env.BASE_URL
       ? getBaseUrl()
-      : 'https://website-production-git-feat-ring-pro-buy-ultrahuman.vercel.app');
+      : 'https://www.ultrahuman.com');
 
 const PRICE_REGEX =
   /(?:MXN\s*\$|C\$|A\$|SAR|AED|USD|SGD|AUD|INR|₹|£|€|R|\$)\s*[\d.,]+(?:\s*\(Tax incl\.\))?/gi;
