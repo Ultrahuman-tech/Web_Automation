@@ -173,6 +173,11 @@ export function m1Url(baseUrl: string, region: string): string {
   return regionUrl(baseUrl, region, '/m1/');
 }
 
+/** /{region}/ring-pro/buy/ */
+export function ringProBuyUrl(baseUrl: string, region: string): string {
+  return regionUrl(baseUrl, region, '/ring-pro/buy/');
+}
+
 /** /{region}/ (homepage for a region) */
 export function homePageUrl(baseUrl: string, region: string): string {
   return regionUrl(baseUrl, region, '/');
@@ -196,7 +201,7 @@ export function extractRegionFromUrl(url: string): string | null {
     if (newMatch?.[1]) return newMatch[1].toLowerCase();
 
     // OLD format: /ring/buy/{region}/ or /pricing/{region}/ etc.
-    const oldMatch = pathname.match(/\/(?:ring\/buy|pricing|shop|home\/buy|blood-vision\/buy|rare\/buy)\/([a-z]{2,6})\/?$/i);
+    const oldMatch = pathname.match(/\/(?:ring\/buy|ring-pro\/buy|pricing|shop|home\/buy|blood-vision\/buy|rare\/buy)\/([a-z]{2,6})\/?$/i);
     if (oldMatch?.[1]) return oldMatch[1].toLowerCase();
   } catch {
     // Fallback for non-URL strings
