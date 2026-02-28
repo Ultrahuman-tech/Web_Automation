@@ -22,41 +22,65 @@ const TOTAL_WITH_PRICE_REGEX =
 /* ─── pricing config ─────────────────────────────────────────────────── */
 
 /** Stacking ring add-on prices per region, split by Silver / Gold × Single / Duo */
-const STACKING_PRICES: Record<string, { silver: { single: string; duo: string }; gold: { single: string; duo: string } }> = {
-  IN:     { silver: { single: '₹9,999',    duo: '₹17,999'  }, gold: { single: '₹12,999',   duo: '₹22,999'  } },
-  GLOBAL: { silver: { single: '$119',      duo: '$209'      }, gold: { single: '$149',      duo: '$269'      } },
-  AT:     { silver: { single: '€99',       duo: '€179'      }, gold: { single: '€129',      duo: '€229'      } },
-  GB:     { silver: { single: '£89',       duo: '£159'      }, gold: { single: '£109',      duo: '£199'      } },
-  AU:     { silver: { single: 'A$159',     duo: 'A$289'     }, gold: { single: 'A$199',     duo: 'A$359'     } },
-  CA:     { silver: { single: 'C$149',     duo: 'C$269'     }, gold: { single: 'C$189',     duo: 'C$339'     } },
-  AE:     { silver: { single: 'AED 449',   duo: 'AED 799'   }, gold: { single: 'AED 549',   duo: 'AED 999'   } },
+const STACKING_PRICES: Record<
+  string,
+  { silver: { single: string; duo: string }; gold: { single: string; duo: string } }
+> = {
+  IN: {
+    silver: { single: '₹4,999', duo: '₹8,999' },
+    gold: { single: '₹4,999', duo: '₹8,999' },
+  },
+  GLOBAL: {
+    silver: { single: '$49', duo: '$89' },
+    gold: { single: '$49', duo: '$89' },
+  },
+  AT: {
+    silver: { single: '€45', duo: '€79' },
+    gold: { single: '€45', duo: '€79' },
+  },
+  GB: {
+    silver: { single: '£39', duo: '£69' },
+    gold: { single: '£39', duo: '£69' },
+  },
+  AU: {
+    silver: { single: 'A$69', duo: 'A$129' },
+    gold: { single: 'A$69', duo: 'A$129' },
+  },
+  CA: {
+    silver: { single: 'C$65', duo: 'C$125' },
+    gold: { single: 'C$65', duo: 'C$125' },
+  },
+  AE: {
+    silver: { single: 'AED 179', duo: 'AED 329' },
+    gold: { single: 'AED 179', duo: 'AED 329' },
+  },
 };
 
 /** Base ring prices per region (from ring-utils DEFAULT_RING_PRICES) */
 const BASE_RING_PRICES: Record<string, string> = {
-  IN:     '₹28,499',
+  IN: '₹28,499',
   GLOBAL: '$349',
-  AT:     '€379',
-  GB:     '£329',
-  AU:     'A$599',
-  CA:     'C$479',
-  AE:     'AED 1,299',
+  AT: '€379',
+  GB: '£329',
+  AU: 'A$599',
+  CA: 'C$479',
+  AE: 'AED 1,299',
 };
 
 type RegionConfig = {
   name: string;
   slug: string;
-  key: string;         // uppercase key into pricing maps
+  key: string; // uppercase key into pricing maps
 };
 
 const REGIONS: RegionConfig[] = [
-  { name: 'India',              slug: 'in',     key: 'IN'     },
-  { name: 'USA / Global',      slug: 'global',  key: 'GLOBAL' },
-  { name: 'Austria / EU',      slug: 'at',     key: 'AT'     },
-  { name: 'United Kingdom',    slug: 'gb',     key: 'GB'     },
-  { name: 'Australia',         slug: 'au',     key: 'AU'     },
-  { name: 'Canada',            slug: 'ca',     key: 'CA'     },
-  { name: 'United Arab Emirates', slug: 'ae',  key: 'AE'     },
+  { name: 'India', slug: 'in', key: 'IN' },
+  { name: 'USA / Global', slug: 'global', key: 'GLOBAL' },
+  { name: 'Austria / EU', slug: 'at', key: 'AT' },
+  { name: 'United Kingdom', slug: 'gb', key: 'GB' },
+  { name: 'Australia', slug: 'au', key: 'AU' },
+  { name: 'Canada', slug: 'ca', key: 'CA' },
+  { name: 'United Arab Emirates', slug: 'ae', key: 'AE' },
 ];
 
 /* ─── helpers ────────────────────────────────────────────────────────── */
@@ -85,7 +109,10 @@ async function findVisibleStackingAnchor(page: Page): Promise<Locator> {
   const candidates: Locator[] = [
     page.getByRole('heading', { name: /stack|bling/i, level: 5 }).first(),
     page.getByRole('heading', { name: /stack|bling/i }).first(),
-    page.locator('h1,h2,h3,h4,h5,h6').filter({ hasText: /add bling|stack your ring|stacking/i }).first(),
+    page
+      .locator('h1,h2,h3,h4,h5,h6')
+      .filter({ hasText: /add bling|stack your ring|stacking/i })
+      .first(),
     page.getByRole('button', { name: /Bling\s*-\s*Eternity Silver|Eternity Silver/i }).first(),
     page.getByRole('button', { name: /Bling\s*-\s*Eternity Gold|Eternity Gold/i }).first(),
     page.getByRole('button', { name: /I don't want to stack/i }).first(),
@@ -268,7 +295,9 @@ async function validateCartForScenario(
 
   expect(
     cartPriceValues.includes(baseValue),
-    `Cart should contain base price ${expectation.basePrice}; detected prices: [${cartPriceValues.join(', ')}], cart text: ${cartText}`
+    `Cart should contain base price ${expectation.basePrice}; detected prices: [${cartPriceValues.join(
+      ', '
+    )}], cart text: ${cartText}`
   ).toBe(true);
 
   if (expectation.expectedStackPrice) {
@@ -279,12 +308,20 @@ async function validateCartForScenario(
 
     expect(
       cartPriceValues.includes(stackValue),
-      `Cart should contain configured stack price ${expectation.expectedStackPrice}; detected prices: [${cartPriceValues.join(', ')}], displayed totals: [${displayedTotals.join(', ')}], cart text: ${cartText}`
+      `Cart should contain configured stack price ${
+        expectation.expectedStackPrice
+      }; detected prices: [${cartPriceValues.join(', ')}], displayed totals: [${displayedTotals.join(
+        ', '
+      )}], cart text: ${cartText}`
     ).toBe(true);
 
     expect(
       hasExpectedPair || hasDisplayedExpectedTotal,
-      `Cart total should match configured sum ${expectation.basePrice} + ${expectation.expectedStackPrice}; detected prices: [${cartPriceValues.join(', ')}], displayed totals: [${displayedTotals.join(', ')}], cart text: ${cartText}`
+      `Cart total should match configured sum ${expectation.basePrice} + ${
+        expectation.expectedStackPrice
+      }; detected prices: [${cartPriceValues.join(', ')}], displayed totals: [${displayedTotals.join(
+        ', '
+      )}], cart text: ${cartText}`
     ).toBe(true);
   } else {
     const forbiddenValues = (expectation.forbiddenStackPrices ?? [])
@@ -295,12 +332,18 @@ async function validateCartForScenario(
 
     expect(
       hasForbiddenStack,
-      `Cart should not include stacking add-on prices; forbidden: [${(expectation.forbiddenStackPrices ?? []).join(', ')}], detected: [${cartPriceValues.join(', ')}], cart text: ${cartText}`
+      `Cart should not include stacking add-on prices; forbidden: [${(
+        expectation.forbiddenStackPrices ?? []
+      ).join(', ')}], detected: [${cartPriceValues.join(', ')}], cart text: ${cartText}`
     ).toBe(false);
 
     expect(
       hasDisplayedBaseTotal || hasPricePairSum(cartPriceValues, baseValue),
-      `Cart total should remain at base price ${expectation.basePrice}; detected prices: [${cartPriceValues.join(', ')}], displayed totals: [${displayedTotals.join(', ')}], cart text: ${cartText}`
+      `Cart total should remain at base price ${
+        expectation.basePrice
+      }; detected prices: [${cartPriceValues.join(', ')}], displayed totals: [${displayedTotals.join(
+        ', '
+      )}], cart text: ${cartText}`
     ).toBe(true);
   }
 
@@ -375,7 +418,6 @@ test.describe('Ring Stacking – Pricing Validation', () => {
     const basePrice = BASE_RING_PRICES[region.key];
 
     test.describe(`Region: ${region.name} (${region.key})`, () => {
-
       test.beforeEach(async ({ page }) => {
         await gotoStackingPage(page, region.slug);
       });
@@ -460,19 +502,25 @@ test.describe('Ring Stacking – Pricing Validation', () => {
 
         console.log(`[Stacking:${region.key}] Silver Single: ${stackPrices.silver.single} ✓`);
 
-        await testInfo.attach(`stacking-silver-single-${region.key}`, {
-          body: JSON.stringify({
-            region: region.name,
-            ring: 'Eternity Silver',
-            type: 'single',
-            expectedStack: stackPrices.silver.single,
-            basePrice,
-            cartPriceValues: cartDebugSnapshot.cartPriceValues,
-            displayedTotals: cartDebugSnapshot.displayedTotals,
-            cartText: cartDebugSnapshot.cartText,
-          }, null, 2),
-          contentType: 'application/json',
-        }).catch(() => {});
+        await testInfo
+          .attach(`stacking-silver-single-${region.key}`, {
+            body: JSON.stringify(
+              {
+                region: region.name,
+                ring: 'Eternity Silver',
+                type: 'single',
+                expectedStack: stackPrices.silver.single,
+                basePrice,
+                cartPriceValues: cartDebugSnapshot.cartPriceValues,
+                displayedTotals: cartDebugSnapshot.displayedTotals,
+                cartText: cartDebugSnapshot.cartText,
+              },
+              null,
+              2
+            ),
+            contentType: 'application/json',
+          })
+          .catch(() => {});
       });
 
       /* ── 3. Eternity Silver – Duo stacking ──────────────────── */
@@ -525,19 +573,25 @@ test.describe('Ring Stacking – Pricing Validation', () => {
 
         console.log(`[Stacking:${region.key}] Silver Duo: ${stackPrices.silver.duo} ✓`);
 
-        await testInfo.attach(`stacking-silver-duo-${region.key}`, {
-          body: JSON.stringify({
-            region: region.name,
-            ring: 'Eternity Silver',
-            type: 'duo',
-            expectedStack: stackPrices.silver.duo,
-            basePrice,
-            cartPriceValues: cartDebugSnapshot.cartPriceValues,
-            displayedTotals: cartDebugSnapshot.displayedTotals,
-            cartText: cartDebugSnapshot.cartText,
-          }, null, 2),
-          contentType: 'application/json',
-        }).catch(() => {});
+        await testInfo
+          .attach(`stacking-silver-duo-${region.key}`, {
+            body: JSON.stringify(
+              {
+                region: region.name,
+                ring: 'Eternity Silver',
+                type: 'duo',
+                expectedStack: stackPrices.silver.duo,
+                basePrice,
+                cartPriceValues: cartDebugSnapshot.cartPriceValues,
+                displayedTotals: cartDebugSnapshot.displayedTotals,
+                cartText: cartDebugSnapshot.cartText,
+              },
+              null,
+              2
+            ),
+            contentType: 'application/json',
+          })
+          .catch(() => {});
       });
 
       /* ── 4. Eternity Gold – Single stacking ─────────────────── */
@@ -590,19 +644,25 @@ test.describe('Ring Stacking – Pricing Validation', () => {
 
         console.log(`[Stacking:${region.key}] Gold Single: ${stackPrices.gold.single} ✓`);
 
-        await testInfo.attach(`stacking-gold-single-${region.key}`, {
-          body: JSON.stringify({
-            region: region.name,
-            ring: 'Eternity Gold',
-            type: 'single',
-            expectedStack: stackPrices.gold.single,
-            basePrice,
-            cartPriceValues: cartDebugSnapshot.cartPriceValues,
-            displayedTotals: cartDebugSnapshot.displayedTotals,
-            cartText: cartDebugSnapshot.cartText,
-          }, null, 2),
-          contentType: 'application/json',
-        }).catch(() => {});
+        await testInfo
+          .attach(`stacking-gold-single-${region.key}`, {
+            body: JSON.stringify(
+              {
+                region: region.name,
+                ring: 'Eternity Gold',
+                type: 'single',
+                expectedStack: stackPrices.gold.single,
+                basePrice,
+                cartPriceValues: cartDebugSnapshot.cartPriceValues,
+                displayedTotals: cartDebugSnapshot.displayedTotals,
+                cartText: cartDebugSnapshot.cartText,
+              },
+              null,
+              2
+            ),
+            contentType: 'application/json',
+          })
+          .catch(() => {});
       });
 
       /* ── 5. Eternity Gold – Duo stacking ────────────────────── */
@@ -658,19 +718,25 @@ test.describe('Ring Stacking – Pricing Validation', () => {
 
         console.log(`[Stacking:${region.key}] Gold Duo: ${stackPrices.gold.duo} ✓`);
 
-        await testInfo.attach(`stacking-gold-duo-${region.key}`, {
-          body: JSON.stringify({
-            region: region.name,
-            ring: 'Eternity Gold',
-            type: 'duo',
-            expectedStack: stackPrices.gold.duo,
-            basePrice,
-            cartPriceValues: cartDebugSnapshot.cartPriceValues,
-            displayedTotals: cartDebugSnapshot.displayedTotals,
-            cartText: cartDebugSnapshot.cartText,
-          }, null, 2),
-          contentType: 'application/json',
-        }).catch(() => {});
+        await testInfo
+          .attach(`stacking-gold-duo-${region.key}`, {
+            body: JSON.stringify(
+              {
+                region: region.name,
+                ring: 'Eternity Gold',
+                type: 'duo',
+                expectedStack: stackPrices.gold.duo,
+                basePrice,
+                cartPriceValues: cartDebugSnapshot.cartPriceValues,
+                displayedTotals: cartDebugSnapshot.displayedTotals,
+                cartText: cartDebugSnapshot.cartText,
+              },
+              null,
+              2
+            ),
+            contentType: 'application/json',
+          })
+          .catch(() => {});
       });
 
       /* ── 6. No stacking – price unchanged ───────────────────── */
@@ -712,17 +778,23 @@ test.describe('Ring Stacking – Pricing Validation', () => {
 
         console.log(`[Stacking:${region.key}] No stacking: total = ${basePrice} ✓`);
 
-        await testInfo.attach(`stacking-none-${region.key}`, {
-          body: JSON.stringify({
-            region: region.name,
-            type: 'none',
-            basePrice,
-            cartPriceValues: cartDebugSnapshot.cartPriceValues,
-            displayedTotals: cartDebugSnapshot.displayedTotals,
-            cartText: cartDebugSnapshot.cartText,
-          }, null, 2),
-          contentType: 'application/json',
-        }).catch(() => {});
+        await testInfo
+          .attach(`stacking-none-${region.key}`, {
+            body: JSON.stringify(
+              {
+                region: region.name,
+                type: 'none',
+                basePrice,
+                cartPriceValues: cartDebugSnapshot.cartPriceValues,
+                displayedTotals: cartDebugSnapshot.displayedTotals,
+                cartText: cartDebugSnapshot.cartText,
+              },
+              null,
+              2
+            ),
+            contentType: 'application/json',
+          })
+          .catch(() => {});
       });
 
       /* ── 7. Size variant + stacking – order summary line items ── */
@@ -745,10 +817,9 @@ test.describe('Ring Stacking – Pricing Validation', () => {
           const summaryText = await getOrderSummaryText(page);
 
           // Order summary should mention the stacking ring as a separate line
-          expect(
-            summaryText,
-            'Order summary should contain stacking ring line item'
-          ).toContain('Eternity Silver');
+          expect(summaryText, 'Order summary should contain stacking ring line item').toContain(
+            'Eternity Silver'
+          );
 
           // Stacking price should appear in the summary
           const stackDigits = normalizePriceDigits(stackPrices.silver.single);
@@ -789,20 +860,26 @@ test.describe('Ring Stacking – Pricing Validation', () => {
 
         console.log(`[Stacking:${region.key}] Silver Single + Size 8: summary line items ✓`);
 
-        await testInfo.attach(`stacking-summary-lineitem-${region.key}`, {
-          body: JSON.stringify({
-            region: region.name,
-            ring: 'Eternity Silver',
-            type: 'single',
-            size: '8',
-            expectedStack: stackPrices.silver.single,
-            basePrice,
-            cartPriceValues: cartDebugSnapshot.cartPriceValues,
-            displayedTotals: cartDebugSnapshot.displayedTotals,
-            cartText: cartDebugSnapshot.cartText,
-          }, null, 2),
-          contentType: 'application/json',
-        }).catch(() => {});
+        await testInfo
+          .attach(`stacking-summary-lineitem-${region.key}`, {
+            body: JSON.stringify(
+              {
+                region: region.name,
+                ring: 'Eternity Silver',
+                type: 'single',
+                size: '8',
+                expectedStack: stackPrices.silver.single,
+                basePrice,
+                cartPriceValues: cartDebugSnapshot.cartPriceValues,
+                displayedTotals: cartDebugSnapshot.displayedTotals,
+                cartText: cartDebugSnapshot.cartText,
+              },
+              null,
+              2
+            ),
+            contentType: 'application/json',
+          })
+          .catch(() => {});
       });
 
       /* ── 8. Cart pricing – Silver Single + Size 8 ──────── */
@@ -836,10 +913,9 @@ test.describe('Ring Stacking – Pricing Validation', () => {
           const cartList = page.getByTestId('cart-list');
           await expect(cartList).toBeVisible({ timeout: ASSERT_TIMEOUT });
           const cartText = await cartList.innerText();
-          expect(
-            cartText,
-            'Cart should mention Eternity Silver stacking ring'
-          ).toMatch(/Eternity Silver|Stacking/i);
+          expect(cartText, 'Cart should mention Eternity Silver stacking ring').toMatch(
+            /Eternity Silver|Stacking/i
+          );
         });
 
         await test.step('Validate cart total matches expected', async () => {
@@ -855,36 +931,50 @@ test.describe('Ring Stacking – Pricing Validation', () => {
 
           expect(
             cartPriceValues.includes(baseValue),
-            `Cart should contain base price ${basePrice}; detected prices: [${cartPriceValues.join(', ')}], cart text: ${cartText}`
+            `Cart should contain base price ${basePrice}; detected prices: [${cartPriceValues.join(
+              ', '
+            )}], cart text: ${cartText}`
           ).toBe(true);
 
           expect(
             hasConfiguredStack,
-            `Cart should contain configured stack price ${stackPrices.silver.single}; detected prices: [${cartPriceValues.join(', ')}], displayed totals: [${displayedTotals.join(', ')}], cart text: ${cartText}`
+            `Cart should contain configured stack price ${
+              stackPrices.silver.single
+            }; detected prices: [${cartPriceValues.join(', ')}], displayed totals: [${displayedTotals.join(
+              ', '
+            )}], cart text: ${cartText}`
           ).toBe(true);
 
           expect(
             hasExpectedPair || hasDisplayedExpectedTotal,
-            `Cart total should match configured sum ${basePrice} + ${stackPrices.silver.single} = ${expectedTotalDigits}; detected prices: [${cartPriceValues.join(', ')}], displayed totals: [${displayedTotals.join(', ')}], cart text: ${cartText}`
+            `Cart total should match configured sum ${basePrice} + ${stackPrices.silver.single} = ${expectedTotalDigits}; detected prices: [${cartPriceValues.join(
+              ', '
+            )}], displayed totals: [${displayedTotals.join(', ')}], cart text: ${cartText}`
           ).toBe(true);
         });
 
         console.log(`[Stacking:${region.key}] Cart pricing: Silver Single + Size 8 ✓`);
 
-        await testInfo.attach(`stacking-cart-silver-single-${region.key}`, {
-          body: JSON.stringify({
-            region: region.name,
-            ring: 'Eternity Silver',
-            type: 'single',
-            size: '8',
-            expectedStack: stackPrices.silver.single,
-            basePrice,
-            cartPriceValues: cartDebugSnapshot.cartPriceValues,
-            displayedTotals: cartDebugSnapshot.displayedTotals,
-            cartText: cartDebugSnapshot.cartText,
-          }, null, 2),
-          contentType: 'application/json',
-        }).catch(() => {});
+        await testInfo
+          .attach(`stacking-cart-silver-single-${region.key}`, {
+            body: JSON.stringify(
+              {
+                region: region.name,
+                ring: 'Eternity Silver',
+                type: 'single',
+                size: '8',
+                expectedStack: stackPrices.silver.single,
+                basePrice,
+                cartPriceValues: cartDebugSnapshot.cartPriceValues,
+                displayedTotals: cartDebugSnapshot.displayedTotals,
+                cartText: cartDebugSnapshot.cartText,
+              },
+              null,
+              2
+            ),
+            contentType: 'application/json',
+          })
+          .catch(() => {});
       });
 
       /* ── 9. Cart pricing – Gold Duo + Size 10 ──────────── */
@@ -918,10 +1008,9 @@ test.describe('Ring Stacking – Pricing Validation', () => {
           const cartList = page.getByTestId('cart-list');
           await expect(cartList).toBeVisible({ timeout: ASSERT_TIMEOUT });
           const cartText = await cartList.innerText();
-          expect(
-            cartText,
-            'Cart should mention Eternity Gold stacking ring'
-          ).toMatch(/Eternity Gold|Stacking/i);
+          expect(cartText, 'Cart should mention Eternity Gold stacking ring').toMatch(
+            /Eternity Gold|Stacking/i
+          );
         });
 
         await test.step('Validate cart total matches expected', async () => {
@@ -937,38 +1026,51 @@ test.describe('Ring Stacking – Pricing Validation', () => {
 
           expect(
             cartPriceValues.includes(baseValue),
-            `Cart should contain base price ${basePrice}; detected prices: [${cartPriceValues.join(', ')}], cart text: ${cartText}`
+            `Cart should contain base price ${basePrice}; detected prices: [${cartPriceValues.join(
+              ', '
+            )}], cart text: ${cartText}`
           ).toBe(true);
 
           expect(
             hasConfiguredStack,
-            `Cart should contain configured stack price ${stackPrices.gold.duo}; detected prices: [${cartPriceValues.join(', ')}], displayed totals: [${displayedTotals.join(', ')}], cart text: ${cartText}`
+            `Cart should contain configured stack price ${
+              stackPrices.gold.duo
+            }; detected prices: [${cartPriceValues.join(', ')}], displayed totals: [${displayedTotals.join(
+              ', '
+            )}], cart text: ${cartText}`
           ).toBe(true);
 
           expect(
             hasExpectedPair || hasDisplayedExpectedTotal,
-            `Cart total should match configured sum ${basePrice} + ${stackPrices.gold.duo} = ${expectedTotalDigits}; detected prices: [${cartPriceValues.join(', ')}], displayed totals: [${displayedTotals.join(', ')}], cart text: ${cartText}`
+            `Cart total should match configured sum ${basePrice} + ${stackPrices.gold.duo} = ${expectedTotalDigits}; detected prices: [${cartPriceValues.join(
+              ', '
+            )}], displayed totals: [${displayedTotals.join(', ')}], cart text: ${cartText}`
           ).toBe(true);
         });
 
         console.log(`[Stacking:${region.key}] Cart pricing: Gold Duo + Size 10 ✓`);
 
-        await testInfo.attach(`stacking-cart-gold-duo-${region.key}`, {
-          body: JSON.stringify({
-            region: region.name,
-            ring: 'Eternity Gold',
-            type: 'duo',
-            size: '10',
-            expectedStack: stackPrices.gold.duo,
-            basePrice,
-            cartPriceValues: cartDebugSnapshot.cartPriceValues,
-            displayedTotals: cartDebugSnapshot.displayedTotals,
-            cartText: cartDebugSnapshot.cartText,
-          }, null, 2),
-          contentType: 'application/json',
-        }).catch(() => {});
+        await testInfo
+          .attach(`stacking-cart-gold-duo-${region.key}`, {
+            body: JSON.stringify(
+              {
+                region: region.name,
+                ring: 'Eternity Gold',
+                type: 'duo',
+                size: '10',
+                expectedStack: stackPrices.gold.duo,
+                basePrice,
+                cartPriceValues: cartDebugSnapshot.cartPriceValues,
+                displayedTotals: cartDebugSnapshot.displayedTotals,
+                cartText: cartDebugSnapshot.cartText,
+              },
+              null,
+              2
+            ),
+            contentType: 'application/json',
+          })
+          .catch(() => {});
       });
-
     }); // end region describe
   } // end regions loop
 });
