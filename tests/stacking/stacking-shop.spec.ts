@@ -21,34 +21,13 @@ type RegionConfig = {
 };
 
 const REGIONS: RegionConfig[] = [
-  {
-    name: 'India',
-    slug: 'in',
-  },
-  {
-    name: 'USA / Global',
-    slug: 'global',
-  },
-  {
-    name: 'Austria / EU',
-    slug: 'at',
-  },
-  {
-    name: 'United Kingdom',
-    slug: 'gb',
-  },
-  {
-    name: 'Australia',
-    slug: 'au',
-  },
-  {
-    name: 'Canada',
-    slug: 'ca',
-  },
-  {
-    name: 'United Arab Emirates',
-    slug: 'ae',
-  },
+  { name: 'India', slug: 'in' },
+  { name: 'USA / Global', slug: 'global' },
+  { name: 'Austria / EU', slug: 'at' },
+  { name: 'United Kingdom', slug: 'gb' },
+  { name: 'Australia', slug: 'au' },
+  { name: 'Canada', slug: 'ca' },
+  { name: 'United Arab Emirates', slug: 'ae' },
 ];
 
 const PRODUCT_TEMPLATES: ProductTemplate[] = [
@@ -77,6 +56,56 @@ const PRODUCT_TEMPLATES: ProductTemplate[] = [
     cartLabel: 'Ultrahuman Bling - Stacking Ring',
   },
 ];
+
+/* ─── expected retail prices ─────────────────────────────────────────── */
+
+type RegionSlug = (typeof REGIONS)[number]['slug'];
+type ProductTitle = (typeof PRODUCT_TEMPLATES)[number]['title'];
+
+const EXPECTED_PRICES: Record<RegionSlug, Record<ProductTitle, string>> = {
+  in: {
+    'Bling Eternity Silver - Single': '₹4,999',
+    'Bling Eternity Gold - Single': '₹4,999',
+    'Bling Eternity Silver - Duo': '₹8,999',
+    'Bling Eternity Gold - Duo': '₹8,999',
+  },
+  global: {
+    'Bling Eternity Silver - Single': '$49',
+    'Bling Eternity Gold - Single': '$49',
+    'Bling Eternity Silver - Duo': '$89',
+    'Bling Eternity Gold - Duo': '$89',
+  },
+  at: {
+    'Bling Eternity Silver - Single': '€45',
+    'Bling Eternity Gold - Single': '€45',
+    'Bling Eternity Silver - Duo': '€79',
+    'Bling Eternity Gold - Duo': '€79',
+  },
+  gb: {
+    'Bling Eternity Silver - Single': '£39',
+    'Bling Eternity Gold - Single': '£39',
+    'Bling Eternity Silver - Duo': '£69',
+    'Bling Eternity Gold - Duo': '£69',
+  },
+  au: {
+    'Bling Eternity Silver - Single': 'A$69',
+    'Bling Eternity Gold - Single': 'A$69',
+    'Bling Eternity Silver - Duo': 'A$129',
+    'Bling Eternity Gold - Duo': 'A$129',
+  },
+  ca: {
+    'Bling Eternity Silver - Single': 'C$65',
+    'Bling Eternity Gold - Single': 'C$65',
+    'Bling Eternity Silver - Duo': 'C$125',
+    'Bling Eternity Gold - Duo': 'C$125',
+  },
+  ae: {
+    'Bling Eternity Silver - Single': 'AED 179',
+    'Bling Eternity Gold - Single': 'AED 179',
+    'Bling Eternity Silver - Duo': 'AED 329',
+    'Bling Eternity Gold - Duo': 'AED 329',
+  },
+};
 
 function normalizeSpace(text: string): string {
   return text.replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
@@ -155,7 +184,9 @@ async function dismissCookieBanner(page: Page) {
 
 async function closeUpsellIfPresent(page: Page) {
   const closeCandidates: Locator[] = [
-    page.locator('.UpsellModal__Header-sc-4b8c899b-3 > .UpsellModal__CloseButton-sc-4b8c899b-6').first(),
+    page
+      .locator('.UpsellModal__Header-sc-4b8c899b-3 > .UpsellModal__CloseButton-sc-4b8c899b-6')
+      .first(),
     page.locator('[class*="UpsellModal__CloseButton"]').first(),
     page.getByRole('button', { name: /close/i }).first(),
   ];
@@ -177,7 +208,9 @@ function getProductCard(page: Page, title: string): Locator {
 
 async function clickQuickAddForProduct(page: Page, product: ProductTemplate): Promise<Locator> {
   const card = getProductCard(page, product.title);
-  await expect(card, `Expected product card for ${product.title}`).toBeVisible({ timeout: ASSERT_TIMEOUT });
+  await expect(card, `Expected product card for ${product.title}`).toBeVisible({
+    timeout: ASSERT_TIMEOUT,
+  });
 
   if (product.openByTitleFirst) {
     const title = card.getByText(product.title, { exact: false }).first();
@@ -223,7 +256,7 @@ async function maybeSelectSize(card: Locator): Promise<string | null> {
     .filter({ hasText: /^\s*(?:[5-9]|1[0-4])\s*$/ })
     .first();
   if (await anySize.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    const selected = ((await anySize.innerText()).replace(/\s+/g, ' ').trim() || 'unknown');
+    const selected = (await anySize.innerText()).replace(/\s+/g, ' ').trim() || 'unknown';
     await anySize.click({ force: true });
     await anySize.page().waitForTimeout(300);
     return selected;
@@ -283,10 +316,9 @@ async function clickAddToCartFor(page: Page, card: Locator, price: string) {
   }
 
   const reviewCartAfter = page.getByRole('button', { name: /Review cart/i }).first();
-  await expect(
-    reviewCartAfter,
-    `Expected add-to-cart action to expose cart CTA for ${price}`
-  ).toBeVisible({ timeout: ASSERT_TIMEOUT });
+  await expect(reviewCartAfter, `Expected add-to-cart action to expose cart CTA for ${price}`).toBeVisible(
+    { timeout: ASSERT_TIMEOUT }
+  );
 }
 
 async function clickReviewCart(page: Page) {
@@ -353,7 +385,9 @@ async function resolveCartContainer(page: Page): Promise<Locator> {
     .locator('aside,section,div')
     .filter({ has: page.getByRole('heading', { name: /Your cart/i }).first() })
     .first();
-  await expect(cartPanel, 'Expected cart panel to be visible').toBeVisible({ timeout: ASSERT_TIMEOUT });
+  await expect(cartPanel, 'Expected cart panel to be visible').toBeVisible({
+    timeout: ASSERT_TIMEOUT,
+  });
   return cartPanel;
 }
 
@@ -379,7 +413,13 @@ test.describe('Ring Stacking – Shop to Cart validation', () => {
 
         await test.step(`Add ${product.title} with size 7`, async () => {
           const productCard = await clickQuickAddForProduct(page, product);
+
           pricingPagePrice = await getProductCardDisplayedPrice(productCard, product.title);
+
+          // ✅ Validate shop card price matches expected retail price for region + product
+          const expectedPrice = EXPECTED_PRICES[region.slug as RegionSlug][product.title as ProductTitle];
+          assertPriceMatch(pricingPagePrice, expectedPrice);
+
           selectedSize = await maybeSelectSize(productCard);
           await clickAddToCartFor(page, productCard, pricingPagePrice);
         });
@@ -405,7 +445,9 @@ test.describe('Ring Stacking – Shop to Cart validation', () => {
           );
           expect(
             priceMatchesCart,
-            `Price mismatch for ${regionId} ${product.title}: pricing page ${pricingPagePrice}, cart prices [${cartDetectedPrices.join(', ')}]`
+            `Price mismatch for ${regionId} ${product.title}: pricing page ${pricingPagePrice}, cart prices [${cartDetectedPrices.join(
+              ', '
+            )}]`
           ).toBe(true);
 
           const cartPriceRow = cartList.getByText(priceRegex(pricingPagePrice)).first();
@@ -437,22 +479,25 @@ test.describe('Ring Stacking – Shop to Cart validation', () => {
           const detailsText = normalizeSpace(await priceDetails.innerText());
           expect(detailsText).toContain(product.breakupLabel);
           breakupDetectedPrices = extractPriceTokens(detailsText);
+
           const priceMatchesBreakup = breakupDetectedPrices.some(
             (token) => normalizePriceDigits(token) === normalizePriceDigits(pricingPagePrice)
           );
           expect(
             priceMatchesBreakup,
-            `Breakup mismatch for ${regionId} ${product.title}: pricing page ${pricingPagePrice}, breakup prices [${breakupDetectedPrices.join(', ')}]`
+            `Breakup mismatch for ${regionId} ${product.title}: pricing page ${pricingPagePrice}, breakup prices [${breakupDetectedPrices.join(
+              ', '
+            )}]`
           ).toBe(true);
         });
 
-        await testInfo.attach(
-          `shop-cart-${region.slug}-${product.title.replace(/\s+/g, '-').toLowerCase()}`,
-          {
+        await testInfo
+          .attach(`shop-cart-${region.slug}-${product.title.replace(/\s+/g, '-').toLowerCase()}`, {
             body: JSON.stringify(
               {
                 region,
                 product,
+                expectedPrice: EXPECTED_PRICES[region.slug as RegionSlug][product.title as ProductTitle],
                 pricingPagePrice,
                 cartDetectedPrices,
                 breakupDetectedPrices,
@@ -461,8 +506,8 @@ test.describe('Ring Stacking – Shop to Cart validation', () => {
               2
             ),
             contentType: 'application/json',
-          }
-        ).catch(() => {});
+          })
+          .catch(() => {});
       });
     }
   }
