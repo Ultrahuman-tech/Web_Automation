@@ -63,7 +63,7 @@ const BASE_RING_PRICES: Record<string, string> = {
   AT: '€379',
   GB: '£329',
   AU: 'A$599',
-  CA: 'C$479',
+  CA: 'C$421.52',
   AE: 'AED 1,299',
 };
 
@@ -195,9 +195,31 @@ async function selectNoStacking(page: Page) {
 
 /** Compute expected total by summing digit-only representations of prices */
 function computeExpectedTotalDigits(basePrice: string, stackPrice: string): string {
-  const baseDigits = parseInt(normalizePriceDigits(basePrice), 10);
-  const stackDigits = parseInt(normalizePriceDigits(stackPrice), 10);
-  return String(baseDigits + stackDigits);
+  const hasDecimalCents = (price: string) =>
+    /[.,]\d{2}\s*$/.test(price.replace(/\u00A0/g, ' ').trim());
+
+  const parsePrice = (price: string, useMinorUnits: boolean): number => {
+    const compact = price.replace(/\u00A0/g, ' ').trim();
+
+    if (!useMinorUnits) {
+      return parseInt(normalizePriceDigits(compact), 10);
+    }
+
+    const decimalMatch = compact.match(/([.,])(\d{2})\s*$/);
+    if (decimalMatch && typeof decimalMatch.index === 'number') {
+      const whole = compact.slice(0, decimalMatch.index).replace(/[^\d]/g, '');
+      const fraction = decimalMatch[2];
+      return parseInt(`${whole || '0'}${fraction}`, 10);
+    }
+
+    // If one operand has decimals and this one doesn't, treat it as .00
+    return parseInt(normalizePriceDigits(compact), 10) * 100;
+  };
+
+  const useMinorUnits = hasDecimalCents(basePrice) || hasDecimalCents(stackPrice);
+  const baseValue = parsePrice(basePrice, useMinorUnits);
+  const stackValue = parsePrice(stackPrice, useMinorUnits);
+  return String(baseValue + stackValue);
 }
 
 /** Extract numeric price values from cart text by matching currency-formatted amounts */
