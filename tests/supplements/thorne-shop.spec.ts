@@ -3,7 +3,7 @@ import { test, expect, Page, Locator } from '@playwright/test';
 const ASSERT_TIMEOUT = 30_000;
 const BASE_URL = process.env.SUPPLEMENTS_BASE_URL
   ? process.env.SUPPLEMENTS_BASE_URL.replace(/\/+$/, '')
-  : 'https://website-production-git-feature-supplements-su-f6b98f-ultrahuman.vercel.app';
+  : 'https://www.ultrahuman.com';
 const SHOP_PATH = '/us/shop/';
 const PRICE_TOKEN_REGEX =
   /(?:\$)\s*[\d.,]+/gi;
