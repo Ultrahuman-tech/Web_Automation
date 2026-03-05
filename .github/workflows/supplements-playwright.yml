@@ -9,13 +9,13 @@ on:
       supplements_base_url:
         description: 'Override supplements base URL'
         required: false
-        default: 'https://website-production-git-feature-supplements-su-f6b98f-ultrahuman.vercel.app'
+        default: 'https://www.ultrahuman.com'
   workflow_call:
     inputs:
       supplements_base_url:
         type: string
         required: false
-        default: 'https://website-production-git-feature-supplements-su-f6b98f-ultrahuman.vercel.app'
+        default: 'https://www.ultrahuman.com'
 
 jobs:
   e2e:
@@ -24,7 +24,7 @@ jobs:
       PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
       PW_TEST_HTML_REPORT_OPEN: never
       PLAYWRIGHT_HTML_REPORT: playwright-report
-      SUPPLEMENTS_BASE_URL: ${{ inputs.supplements_base_url || github.event.inputs.supplements_base_url || 'https://website-production-git-feature-supplements-su-f6b98f-ultrahuman.vercel.app' }}
+      SUPPLEMENTS_BASE_URL: ${{ inputs.supplements_base_url || github.event.inputs.supplements_base_url || 'https://www.ultrahuman.com' }}
 
     steps:
       - name: Checkout code
