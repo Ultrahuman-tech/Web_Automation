@@ -58,12 +58,12 @@ const STACKING_PRICES: Record<
 
 /** Base ring prices per region (from ring-utils DEFAULT_RING_PRICES) */
 const BASE_RING_PRICES: Record<string, string> = {
-  IN: '₹28,499',
+  IN: '₹23,939.16',
   GLOBAL: '$349',
   AT: '€379',
   GB: '£329',
   AU: 'A$599',
-  CA: 'C$421.52',
+  CA: 'C$479',
   AE: 'AED 1,299',
 };
 
