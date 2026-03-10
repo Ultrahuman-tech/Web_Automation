@@ -16,6 +16,18 @@ const COLOR_LABELS: Record<string, string[]> = {
   TITANIUM: ['titanium', 'raw titanium'],
 };
 
+const CHARGER_GROUP_BY_RING_COLOR: Record<string, 'GOLD' | 'BLACK'> = {
+  GOLD: 'GOLD',
+  SILVER: 'GOLD',
+  BLACK: 'BLACK',
+  TITANIUM: 'BLACK',
+};
+
+const CHARGER_LABELS: Record<'GOLD' | 'BLACK', string[]> = {
+  GOLD: ['gold case', 'gold charger'],
+  BLACK: ['black case', 'black charger'],
+};
+
 // ── Pricing ──────────────────────────────────────────────────────────────────
 
 const RING_PRO_PRICES: Record<string, string> = {
@@ -42,9 +54,7 @@ const ensureProtocol = (url: string): string => {
 
 const RING_PRO_BASE_URL = process.env.RING_PRO_BASE_URL
   ? ensureProtocol(process.env.RING_PRO_BASE_URL.replace(/\/ring-pro\/buy\/?$/, '').replace(/\/+$/, ''))
-  : (process.env.CUSTOM_BASE_URL || process.env.BASE_URL
-      ? getBaseUrl()
-      : 'https://www.ultrahuman.com');
+  : getBaseUrl();
 
 const PRICE_REGEX =
   /(?:MXN\s*\$|C\$|A\$|SAR|AED|USD|SGD|AUD|INR|₹|£|€|R|\$)\s*[\d.,]+(?:\s*\(Tax incl\.\))?/gi;
@@ -69,6 +79,44 @@ function getExpectedColorTokens(color: string): string[] {
   tokens.add(normalizeVariantToken(color.replace(/_/g, ' ')));
   (COLOR_LABELS[color] ?? []).forEach((label) => tokens.add(normalizeVariantToken(label)));
   return Array.from(tokens).filter(Boolean);
+}
+
+function getExpectedChargerTokens(color: string): string[] {
+  const chargerGroup = CHARGER_GROUP_BY_RING_COLOR[color];
+  if (!chargerGroup) return [];
+  return (CHARGER_LABELS[chargerGroup] ?? [])
+    .map((label) => normalizeVariantToken(label))
+    .filter(Boolean);
+}
+
+async function validateCartChargerColorByLocator(
+  page: Page,
+  expectedChargerGroup: 'GOLD' | 'BLACK'
+): Promise<{ matched: boolean; locatorUsed: string; candidateCount: number }> {
+  const colorRegex = expectedChargerGroup === 'BLACK' ? /^Black$/ : /^Gold$/;
+  const candidates = page.locator('div').filter({ hasText: colorRegex });
+  const candidateCount = await candidates.count().catch(() => 0);
+
+  // Primary locator from reported failing flow
+  const primaryIndex = 1;
+  if (candidateCount > primaryIndex) {
+    const primary = candidates.nth(primaryIndex);
+    if (await primary.isVisible().catch(() => false)) {
+      await primary.click().catch(() => {});
+      return { matched: true, locatorUsed: `div hasText ${colorRegex} nth(1)`, candidateCount };
+    }
+  }
+
+  // Fallback in case order changes between builds
+  if (candidateCount > 0) {
+    const first = candidates.first();
+    if (await first.isVisible().catch(() => false)) {
+      await first.click().catch(() => {});
+      return { matched: true, locatorUsed: `div hasText ${colorRegex} first()`, candidateCount };
+    }
+  }
+
+  return { matched: false, locatorUsed: `div hasText ${colorRegex}`, candidateCount };
 }
 
 // ── Price lookup ─────────────────────────────────────────────────────────────
@@ -218,6 +266,39 @@ export async function addRingProToCart(
   const expectedColorTokens = getExpectedColorTokens(opts.color);
   const expectedSizeTokens =
     opts.size && opts.size !== 'open' ? [normalizeVariantToken(opts.size)] : [];
+  const expectedChargerGroup = CHARGER_GROUP_BY_RING_COLOR[opts.color];
+  const expectedChargerTokens = getExpectedChargerTokens(opts.color);
+
+  await test.step('Validate charger color on pricing page', async () => {
+    if (!expectedChargerTokens.length) return;
+
+    const activeChargerOption = page.locator('button.charger-option.active').first();
+    const activeOptionText = await activeChargerOption
+      .innerText()
+      .then((text) => text.replace(/\s+/g, ' ').trim())
+      .catch(() => '');
+
+    const chargerOptionTexts = await page
+      .locator('button.charger-option')
+      .allInnerTexts()
+      .then((texts) => texts.map((text) => text.replace(/\s+/g, ' ').trim()))
+      .catch(() => []);
+
+    const normalizedPricingBlob = normalizeVariantToken(
+      [activeOptionText, ...chargerOptionTexts].join(' | ')
+    );
+    const chargerMatched = expectedChargerTokens.some((token) =>
+      normalizedPricingBlob.includes(token)
+    );
+
+    if (!chargerMatched) {
+      throw new Error(
+        `Expected charger mapping not reflected on pricing page for ${opts.color}. ` +
+          `Expected one of: ${expectedChargerTokens.join(', ')}; ` +
+          `Observed: ${[activeOptionText, ...chargerOptionTexts].filter(Boolean).join(' | ')}`
+      );
+    }
+  });
 
   // ── 3. Handle upsell modals ──────────────────────────────────────────────
   await test.step('Handle upsell modals', async () => {
@@ -404,11 +485,24 @@ export async function addRingProToCart(
       const sizeMatched =
         !expectedSizeTokens.length ||
         expectedSizeTokens.some((token) => cartTextBlob.includes(token));
+      const chargerTextMatched =
+        !expectedChargerTokens.length ||
+        expectedChargerTokens.some((token) => cartTextBlob.includes(token));
+      const chargerLocatorResult = expectedChargerGroup
+        ? await validateCartChargerColorByLocator(page, expectedChargerGroup)
+        : { matched: false, locatorUsed: 'n/a', candidateCount: 0 };
+      const chargerMatched = chargerLocatorResult.matched || chargerTextMatched;
 
       const variantReport = {
         selected: { color: opts.color, size: opts.size ?? 'open' },
         expectedColorTokens,
         expectedSizeTokens,
+        expectedChargerTokens,
+        expectedChargerGroup,
+        chargerValidation: {
+          byLocator: chargerLocatorResult,
+          byText: chargerTextMatched,
+        },
         cartText: cartTexts,
       };
 
@@ -419,15 +513,16 @@ export async function addRingProToCart(
         })
         .catch(() => {});
 
-      if (!colorMatched || !sizeMatched) {
+      if (!colorMatched || !sizeMatched || !chargerMatched) {
         console.error('[Ring Pro] Variant mismatch between PDP and cart', {
           selectedColor: opts.color,
           selectedSize: opts.size,
           expectedColorTokens,
           expectedSizeTokens,
+          expectedChargerTokens,
           cartText: cartTexts,
         });
-        throw new Error('Selected Ring Pro variant not reflected correctly in cart');
+        throw new Error('Selected Ring Pro variant / charger mapping not reflected correctly in cart');
       }
     });
 
